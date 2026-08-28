@@ -1,0 +1,493 @@
+#!/usr/bin/env bash
+# LCMP Panel installer — the only place that contains real install logic.
+# Invoked by ./lcmp_gui.sh (documented) or directly by advanced users.
+#
+# Idempotent: re-running updates code without rotating DB passwords,
+# APP_KEY, or broker.json unless --reset-db is passed.
+set -euo pipefail
+
+if [[ ${EUID} -ne 0 ]]; then
+    echo "install.sh must run as root" >&2
+    exit 1
+fi
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PREFIX="${PREFIX:-/usr/local/lib/lcmp-panel}"
+WEB_USER="${WEB_USER:-}"
+PHP_VER="${PHP_VER:-}"
+RESET_DB=0
+INSTALL_CADDY_SNIPPET=0
+
+usage() {
+    cat <<'EOF'
+Usage: install.sh [--install-caddy-snippet] [--php=8.4] [--reset-db]
+
+  --install-caddy-snippet  Bind the panel to 127.0.0.1:6969 (never 0.0.0.0)
+  --php=X.Y                PHP version (default: newest installed FPM)
+  --reset-db               Rotate panel DB users and rewrite broker.json + .env DB_PASSWORD
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --reset-db) RESET_DB=1; shift ;;
+        --php=*) PHP_VER="${1#*=}"; shift ;;
+        --install-caddy-snippet) INSTALL_CADDY_SNIPPET=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+# --- identity ----------------------------------------------------------------
+if [[ -z "${WEB_USER}" ]]; then
+    if id -u caddy >/dev/null 2>&1; then
+        WEB_USER=caddy
+    elif id -u www-data >/dev/null 2>&1; then
+        WEB_USER=www-data
+    else
+        echo "No caddy or www-data user. Set WEB_USER=..." >&2
+        exit 1
+    fi
+fi
+id -u "${WEB_USER}" >/dev/null 2>&1 || { echo "WEB_USER ${WEB_USER} does not exist" >&2; exit 1; }
+
+if [[ -z "${PHP_VER}" ]]; then
+    if ls -d /etc/php/*/fpm >/dev/null 2>&1; then
+        PHP_VER="$(ls -d /etc/php/*/fpm | sed 's|/etc/php/||;s|/fpm||' | sort -V | tail -n1)"
+    elif command -v php >/dev/null 2>&1; then
+        PHP_VER="$(php -v | head -n1 | awk '{print $2}' | cut -d. -f1-2)"
+    else
+        echo "Cannot detect PHP version. Pass --php=8.4" >&2
+        exit 1
+    fi
+fi
+
+fpm_bin() {
+    local c
+    for c in \
+        "php-fpm${PHP_VER}" \
+        "/usr/sbin/php-fpm${PHP_VER}" \
+        "/usr/sbin/php-fpm" \
+        "php${PHP_VER}-fpm"
+    do
+        if command -v "${c}" >/dev/null 2>&1; then
+            command -v "${c}"
+            return 0
+        fi
+        if [[ -x "${c}" ]]; then
+            echo "${c}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+fpm_unit() {
+    if systemctl cat "php${PHP_VER}-fpm.service" >/dev/null 2>&1; then
+        echo "php${PHP_VER}-fpm"
+        return
+    fi
+    if systemctl cat "php-fpm.service" >/dev/null 2>&1; then
+        echo "php-fpm"
+        return
+    fi
+    echo "php${PHP_VER}-fpm"
+}
+
+COMPOSER_BIN="$(command -v composer || true)"
+[[ -n "${COMPOSER_BIN}" ]] || { echo "composer is not on PATH (the wrapper should have installed it)" >&2; exit 1; }
+PHP_BIN="$(command -v php || true)"
+[[ -x "${PHP_BIN}" ]] || { echo "php CLI is not on PATH (the wrapper should have installed php-cli)" >&2; exit 1; }
+
+pool_dir() {
+    if [[ -d "/etc/php/${PHP_VER}/fpm/pool.d" ]]; then
+        echo "/etc/php/${PHP_VER}/fpm/pool.d"
+    elif [[ -d /etc/php-fpm.d ]]; then
+        echo /etc/php-fpm.d
+    fi
+}
+
+fpm_ini() {
+    if [[ -f "/etc/php/${PHP_VER}/fpm/php.ini" ]]; then
+        echo "/etc/php/${PHP_VER}/fpm/php.ini"
+    elif [[ -f /etc/php.ini ]]; then
+        echo /etc/php.ini
+    fi
+}
+
+echo "==> Installing LCMP Panel into ${PREFIX} (php ${PHP_VER}, user ${WEB_USER})"
+
+[[ -d "${ROOT}/broker/src" && -f "${ROOT}/broker/broker" && -d "${ROOT}/web" ]] || {
+    echo "Repo layout incomplete (need broker/ and web/). Partial clone?" >&2
+    exit 1
+}
+
+# --- layout / permissions ----------------------------------------------------
+# PREFIX 0751 root:root: web user can *traverse* into web/ but cannot list PREFIX
+# or read broker/src. Broker binary 0750 root:root. web/ owned by WEB_USER.
+install -d -m 0751 -o root -g root "${PREFIX}"
+install -d -m 0750 -o root -g root "${PREFIX}/src"
+install -d -m 0750 -o root -g root /etc/lcmp-panel
+install -d -m 0750 -o root -g "${WEB_USER}" /var/log/lcmp-panel
+install -d -m 0755 -o "${WEB_USER}" -g "${WEB_USER}" /var/log/caddy
+install -d -m 0750 -o root -g root /var/lib/lcmp-panel
+install -d -m 0750 -o root -g root /var/lib/lcmp-panel/staging
+
+rm -rf "${PREFIX}/src"
+cp -a "${ROOT}/broker/src" "${PREFIX}/src"
+chown -R root:root "${PREFIX}/src"
+chmod -R go-rwx "${PREFIX}/src"
+find "${PREFIX}/src" -type d -exec chmod 0750 {} \;
+find "${PREFIX}/src" -type f -exec chmod 0640 {} \;
+install -m 0750 -o root -g root "${ROOT}/broker/broker" "${PREFIX}/broker"
+
+# --- sudoers (templated to the actual WEB_USER + PREFIX) ---------------------
+SUDOERS=/etc/sudoers.d/lcmp-panel
+TMP_SUDOERS="$(mktemp)"
+cat > "${TMP_SUDOERS}" <<EOF
+# LCMP Panel — sudoers (generated by install.sh)
+# ${WEB_USER} may run ONLY this broker, as root, with no password.
+Defaults:${WEB_USER} !requiretty
+Defaults:${WEB_USER} umask=0022
+${WEB_USER} ALL=(root) NOPASSWD: ${PREFIX}/broker
+EOF
+chmod 0440 "${TMP_SUDOERS}"
+if ! visudo -c -f "${TMP_SUDOERS}" >/dev/null; then
+    rm -f "${TMP_SUDOERS}"
+    echo "sudoers validation failed; aborting" >&2
+    exit 1
+fi
+install -m 0440 -o root -g root "${TMP_SUDOERS}" "${SUDOERS}"
+rm -f "${TMP_SUDOERS}"
+visudo -c >/dev/null
+
+# --- MariaDB panel admin + app user -----------------------------------------
+PANEL_DB="lcmp_panel"
+PANEL_USER="lcmp_panel"
+ADMIN_USER="lcmp_panel_admin"
+APP_PASS=""
+
+if [[ ! -f /etc/lcmp-panel/broker.json || "${RESET_DB}" -eq 1 ]]; then
+    ADMIN_PASS="$(openssl rand -hex 32)"
+    APP_PASS="$(openssl rand -hex 24)"
+    mariadb --protocol=socket <<SQL
+CREATE DATABASE IF NOT EXISTS \`${PANEL_DB}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '${ADMIN_USER}'@'localhost' IDENTIFIED BY '${ADMIN_PASS}';
+CREATE USER IF NOT EXISTS '${ADMIN_USER}'@'127.0.0.1' IDENTIFIED BY '${ADMIN_PASS}';
+ALTER USER '${ADMIN_USER}'@'localhost' IDENTIFIED BY '${ADMIN_PASS}';
+ALTER USER '${ADMIN_USER}'@'127.0.0.1' IDENTIFIED BY '${ADMIN_PASS}';
+GRANT ALL PRIVILEGES ON *.* TO '${ADMIN_USER}'@'localhost' WITH GRANT OPTION;
+GRANT ALL PRIVILEGES ON *.* TO '${ADMIN_USER}'@'127.0.0.1' WITH GRANT OPTION;
+CREATE USER IF NOT EXISTS '${PANEL_USER}'@'localhost' IDENTIFIED BY '${APP_PASS}';
+CREATE USER IF NOT EXISTS '${PANEL_USER}'@'127.0.0.1' IDENTIFIED BY '${APP_PASS}';
+ALTER USER '${PANEL_USER}'@'localhost' IDENTIFIED BY '${APP_PASS}';
+ALTER USER '${PANEL_USER}'@'127.0.0.1' IDENTIFIED BY '${APP_PASS}';
+GRANT ALL PRIVILEGES ON \`${PANEL_DB}\`.* TO '${PANEL_USER}'@'localhost';
+GRANT ALL PRIVILEGES ON \`${PANEL_DB}\`.* TO '${PANEL_USER}'@'127.0.0.1';
+FLUSH PRIVILEGES;
+SQL
+    umask 077
+    cat > /etc/lcmp-panel/broker.json <<EOF
+{
+    "paths": {
+        "www_root": "/data/www",
+        "caddy_confd": "/etc/caddy/conf.d",
+        "caddyfile": "/etc/caddy/Caddyfile",
+        "caddy_bin": "/usr/bin/caddy",
+        "audit_log": "/var/log/lcmp-panel/broker-audit.log",
+        "mariadb_server_cnf": "/etc/mysql/mariadb.conf.d/50-server.cnf",
+        "artisan": "${PREFIX}/web/artisan",
+        "staging_dir": "/var/lib/lcmp-panel/staging",
+        "cron_d": "/etc/cron.d/lcmp-panel",
+        "panel_root": "${PREFIX}"
+    },
+    "web_user": "${WEB_USER}",
+    "mariadb": {
+        "socket": "/run/mysqld/mysqld.sock",
+        "user": "${ADMIN_USER}",
+        "password": "${ADMIN_PASS}"
+    },
+    "readonly_vhosts": ["projob.az", "www.projob.az"]
+}
+EOF
+    chmod 0600 /etc/lcmp-panel/broker.json
+    chown root:root /etc/lcmp-panel/broker.json
+    unset ADMIN_PASS
+else
+    echo "Keeping existing /etc/lcmp-panel/broker.json (pass --reset-db to rotate)."
+fi
+
+# --- web app (preserve .env / storage across re-runs) ------------------------
+install -d -m 0750 -o "${WEB_USER}" -g "${WEB_USER}" "${PREFIX}/web"
+rsync -a --delete \
+    --exclude '.env' \
+    --exclude 'vendor/' \
+    --exclude 'node_modules/' \
+    --exclude 'tests/' \
+    --exclude 'storage/logs/*' \
+    --exclude 'storage/framework/cache/data/*' \
+    --exclude 'storage/framework/sessions/*' \
+    --exclude 'storage/framework/views/*' \
+    --exclude '.phpunit.cache/' \
+    "${ROOT}/web/" "${PREFIX}/web/"
+
+# HTTP-layer Validator copy (no secrets). Privileged src/ stays 0750 root:root.
+install -d -m 0750 -o "${WEB_USER}" -g "${WEB_USER}" "${PREFIX}/web/lib/lcmp-broker"
+rsync -a --delete "${ROOT}/broker/src/" "${PREFIX}/web/lib/lcmp-broker/"
+
+install -d -m 0770 -o "${WEB_USER}" -g "${WEB_USER}" \
+    "${PREFIX}/web/storage" \
+    "${PREFIX}/web/storage/logs" \
+    "${PREFIX}/web/storage/framework" \
+    "${PREFIX}/web/storage/framework/cache" \
+    "${PREFIX}/web/storage/framework/cache/data" \
+    "${PREFIX}/web/storage/framework/sessions" \
+    "${PREFIX}/web/storage/framework/views" \
+    "${PREFIX}/web/storage/app" \
+    "${PREFIX}/web/bootstrap/cache"
+# keep directory placeholders git ships
+find "${PREFIX}/web/storage" "${PREFIX}/web/bootstrap/cache" -type d -exec chmod 0770 {} \;
+chown -R "${WEB_USER}:${WEB_USER}" "${PREFIX}/web"
+
+if [[ ! -f "${PREFIX}/web/.env" ]]; then
+    cp "${ROOT}/web/.env.example" "${PREFIX}/web/.env"
+    sed -i "s|^BROKER_DRIVER=.*|BROKER_DRIVER=sudo|" "${PREFIX}/web/.env"
+    sed -i "s|^BROKER_PATH=.*|BROKER_PATH=${PREFIX}/broker|" "${PREFIX}/web/.env"
+    sed -i "s|^APP_ENV=.*|APP_ENV=production|" "${PREFIX}/web/.env"
+    sed -i "s|^APP_DEBUG=.*|APP_DEBUG=false|" "${PREFIX}/web/.env"
+    sed -i "s|^APP_URL=.*|APP_URL=http://127.0.0.1:6969|" "${PREFIX}/web/.env"
+fi
+if [[ -n "${APP_PASS}" ]]; then
+    sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=${APP_PASS}|" "${PREFIX}/web/.env"
+fi
+chown "${WEB_USER}:${WEB_USER}" "${PREFIX}/web/.env"
+chmod 0640 "${PREFIX}/web/.env"
+
+COMPOSER_HOME="$(mktemp -d /tmp/lcmp-composer.XXXXXX)"
+chown "${WEB_USER}:${WEB_USER}" "${COMPOSER_HOME}"
+export COMPOSER_HOME
+run_as_web() {
+    # bash -c (not -lc): WEB_USER often has nologin as its login shell.
+    sudo -u "${WEB_USER}" -H env COMPOSER_HOME="${COMPOSER_HOME}" \
+        PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin" \
+        bash -c "cd '${PREFIX}/web' && $*"
+}
+
+LOCK_HASH_FILE="/var/lib/lcmp-panel/composer.lock.sha256"
+LOCK_NOW=""
+if [[ -f "${PREFIX}/web/composer.lock" ]]; then
+    LOCK_NOW="$(sha256sum "${PREFIX}/web/composer.lock" | awk '{print $1}')"
+fi
+NEED_COMPOSER=1
+if [[ -f "${PREFIX}/web/vendor/autoload.php" && -n "${LOCK_NOW}" && -f "${LOCK_HASH_FILE}" ]]; then
+    if [[ "$(cat "${LOCK_HASH_FILE}")" == "${LOCK_NOW}" ]]; then
+        NEED_COMPOSER=0
+    fi
+fi
+if [[ "${NEED_COMPOSER}" -eq 1 ]]; then
+    echo "==> composer install --no-dev --optimize-autoloader"
+    run_as_web "${PHP_BIN} ${COMPOSER_BIN} install --no-dev --optimize-autoloader --no-interaction --no-scripts"
+    run_as_web "${PHP_BIN} artisan package:discover --ansi --no-interaction"
+    if [[ -n "${LOCK_NOW}" ]]; then
+        printf '%s\n' "${LOCK_NOW}" > "${LOCK_HASH_FILE}"
+        chmod 0640 "${LOCK_HASH_FILE}"
+        chown root:root "${LOCK_HASH_FILE}"
+    fi
+else
+    echo "==> vendor/ matches composer.lock — skipping composer install"
+fi
+run_as_web "${PHP_BIN} ${COMPOSER_BIN} dump-autoload -o --no-interaction --no-scripts"
+rm -rf "${COMPOSER_HOME}"
+
+if ! grep -q '^APP_KEY=base64:' "${PREFIX}/web/.env"; then
+    run_as_web "${PHP_BIN} artisan key:generate --force --no-interaction"
+else
+    echo "Keeping existing APP_KEY (encrypted settings depend on it)."
+fi
+run_as_web "${PHP_BIN} artisan migrate --force --no-interaction"
+run_as_web "${PHP_BIN} artisan view:clear --no-interaction" || true
+run_as_web "${PHP_BIN} artisan config:clear --no-interaction" || true
+
+# --- dedicated FPM pool + public-pool lockdown -------------------------------
+POOL_DIR="$(pool_dir)"
+FPM_INI="$(fpm_ini)"
+if [[ -n "${POOL_DIR}" && -d "${POOL_DIR}" ]]; then
+    if [[ -n "${FPM_INI}" && -f "${FPM_INI}" ]] && grep -Eq '^disable_functions[[:space:]]*=' "${FPM_INI}"; then
+        if grep -Eq '^disable_functions[[:space:]]*=.*(proc_open|proc_get_status)' "${FPM_INI}"; then
+            # Keep the first backup forever so uninstall can restore.
+            if [[ ! -f "${FPM_INI}.lcmp-panel.bak" ]]; then
+                cp -a "${FPM_INI}" "${FPM_INI}.lcmp-panel.bak"
+            fi
+            python3 - "${FPM_INI}" <<'PY'
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+blocked = {"proc_open", "proc_get_status"}
+def repl(match: re.Match[str]) -> str:
+    funcs = [f.strip() for f in match.group(1).split(",") if f.strip() and f.strip() not in blocked]
+    seen, out = set(), []
+    for f in funcs:
+        if f not in seen:
+            seen.add(f)
+            out.append(f)
+    return "disable_functions = " + ",".join(out)
+new, n = re.subn(r"^disable_functions\s*=\s*(.*)$", repl, text, count=1, flags=re.M)
+if n != 1:
+    raise SystemExit("failed to edit disable_functions in " + str(path))
+path.write_text(new)
+PY
+        fi
+    fi
+    # Re-lock EVERY public pool, not just www.conf — stripping proc_open from
+    # php.ini would otherwise leak it to any pool that relies on the global list.
+    python3 - "${POOL_DIR}" <<'PY'
+import pathlib, re, sys
+pool_dir = pathlib.Path(sys.argv[1])
+block = """
+; --- LCMP-PANEL-LOCKDOWN-BEGIN ---
+; proc_open/proc_get_status were removed from php.ini so the panel pool
+; can use Symfony Process. Public sites keep the original lockdown.
+php_admin_value[disable_functions] = passthru,exec,shell_exec,system,chroot,chgrp,chown,proc_open,proc_get_status,ini_alter,ini_restore
+; --- LCMP-PANEL-LOCKDOWN-END ---
+"""
+for path in sorted(pool_dir.glob("*.conf")):
+    if path.name == "lcmp-panel.conf":
+        continue
+    text = path.read_text()
+    if "; --- LCMP-PANEL-LOCKDOWN-BEGIN ---" in text:
+        text = re.sub(
+            r"\n?; --- LCMP-PANEL-LOCKDOWN-BEGIN ---.*?--- LCMP-PANEL-LOCKDOWN-END ---\n?",
+            block,
+            text,
+            count=1,
+            flags=re.S,
+        )
+    else:
+        text = text.rstrip() + "\n" + block
+    path.write_text(text if text.endswith("\n") else text + "\n")
+PY
+
+    cat > "${POOL_DIR}/lcmp-panel.conf" <<EOF
+; LCMP Panel dedicated PHP-FPM pool (generated by install.sh).
+; Isolated from www.conf. shell_exec / system / exec stay disabled.
+; Do not add proc_open to disable_functions here — php.ini already
+; dropped it so this pool can use Symfony Process.
+
+[lcmp-panel]
+user = ${WEB_USER}
+group = ${WEB_USER}
+listen = /run/php/lcmp-panel.sock
+listen.owner = ${WEB_USER}
+listen.group = ${WEB_USER}
+listen.mode = 0660
+
+pm = ondemand
+pm.max_children = 4
+pm.process_idle_timeout = 10s
+pm.max_requests = 200
+
+php_admin_value[disable_functions] = passthru,exec,shell_exec,system,chroot,chgrp,chown,ini_alter,ini_restore
+php_admin_flag[expose_php] = off
+php_admin_value[open_basedir] = ${PREFIX}/web:/tmp:/dev/urandom:/usr/bin/sudo:/var/log/lcmp-panel
+php_admin_value[session.save_path] = ${PREFIX}/web/storage/framework/sessions
+php_admin_flag[log_errors] = on
+php_admin_value[error_log] = /var/log/lcmp-panel/php-fpm.log
+EOF
+    chmod 0644 "${POOL_DIR}/lcmp-panel.conf"
+
+    FPM_BIN="$(fpm_bin)" || { echo "php-fpm binary for ${PHP_VER} not found" >&2; exit 1; }
+    install -d -m 0755 /run/php
+    "${FPM_BIN}" -t
+    UNIT="$(fpm_unit)"
+    systemctl reload "${UNIT}" || systemctl restart "${UNIT}"
+else
+    echo "Warning: PHP-FPM pool directory not found; skip FPM pool. Panel cannot call the broker without proc_open." >&2
+fi
+
+# --- scheduler cron (idempotent; same body as broker scheduler.install) ------
+cat > /etc/cron.d/lcmp-panel <<EOF
+# LCMP Panel — Laravel scheduler (idempotent)
+SHELL=/bin/sh
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+* * * * * ${WEB_USER} ${PHP_BIN} ${PREFIX}/web/artisan schedule:run >/dev/null 2>&1
+EOF
+chmod 0644 /etc/cron.d/lcmp-panel
+
+# --- optional Caddy snippet --------------------------------------------------
+if [[ "${INSTALL_CADDY_SNIPPET}" -eq 1 ]]; then
+    touch /var/log/caddy/access_lcmp-panel.log
+    chown "${WEB_USER}:${WEB_USER}" /var/log/caddy/access_lcmp-panel.log
+    chmod 0640 /var/log/caddy/access_lcmp-panel.log
+    SNIPPET=/etc/caddy/conf.d/lcmp-panel.conf
+    BAK=""
+    if [[ -e "${SNIPPET}" ]]; then
+        BAK="${SNIPPET}.lcmp-bak"
+        cp -a "${SNIPPET}" "${BAK}"
+    fi
+    cat > "${SNIPPET}" <<EOF
+# LCMP Panel — localhost-only vhost (generated by install.sh)
+# ssh -L 6969:127.0.0.1:6969 <host>
+# then http://127.0.0.1:6969
+# Bind is 127.0.0.1 only — never 0.0.0.0:6969.
+
+http://127.0.0.1:6969 {
+    bind 127.0.0.1
+    encode gzip zstd
+    root * ${PREFIX}/web/public
+    php_fastcgi unix//run/php/lcmp-panel.sock
+    file_server
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy no-referrer
+    }
+    log {
+        output file /var/log/caddy/access_lcmp-panel.log {
+            roll_size 16mb
+            roll_keep 3
+            roll_keep_for 7d
+        }
+    }
+}
+EOF
+    chmod 0644 "${SNIPPET}"
+    if /usr/bin/caddy validate --config /etc/caddy/Caddyfile; then
+        sudo -n -u "${WEB_USER}" /usr/bin/caddy reload --config /etc/caddy/Caddyfile --force
+        rm -f "${BAK}"
+    else
+        if [[ -n "${BAK}" && -f "${BAK}" ]]; then
+            mv -f "${BAK}" "${SNIPPET}"
+        else
+            rm -f "${SNIPPET}"
+        fi
+        echo "Caddy validate failed; panel snippet was rolled back." >&2
+        exit 1
+    fi
+else
+    echo "Caddy snippet not installed (default). Re-run with --install-caddy-snippet."
+fi
+
+# Re-assert traversal vs. secrecy after every rsync/chown.
+chmod 0751 "${PREFIX}"
+chown root:root "${PREFIX}"
+chmod 0750 "${PREFIX}/broker"
+chown root:root "${PREFIX}/broker"
+chmod -R go-rwx "${PREFIX}/src"
+find "${PREFIX}/src" -type d -exec chmod 0750 {} \;
+find "${PREFIX}/src" -type f -exec chmod 0640 {} \;
+chown -R root:root "${PREFIX}/src"
+if [[ -f /etc/lcmp-panel/broker.json ]]; then
+    chmod 0600 /etc/lcmp-panel/broker.json
+    chown root:root /etc/lcmp-panel/broker.json
+fi
+
+echo
+echo "Installed."
+echo "  Broker:  ${PREFIX}/broker"
+echo "  Web:     ${PREFIX}/web"
+echo "  Sudoers: /etc/sudoers.d/lcmp-panel"
+echo
+echo "First-run: open the panel and complete the setup wizard (strong password + TOTP)."
+echo "Access: ssh -L 6969:127.0.0.1:6969 <this-host>"
+echo "        then http://127.0.0.1:6969"
+echo "The panel binds to 127.0.0.1 only. Do not change it to 0.0.0.0."

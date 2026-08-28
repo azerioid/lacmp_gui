@@ -1,0 +1,35 @@
+<?php
+declare(strict_types=1);
+
+namespace LcmpPanel\Broker\Actions;
+
+use LcmpPanel\Broker\BrokerException;
+use LcmpPanel\Broker\Config;
+use LcmpPanel\Broker\Runtime;
+use LcmpPanel\Broker\Validator;
+
+final class DbDel
+{
+    public function handle(string $action, array $args, array $input, Runtime $runtime, Config $config): array
+    {
+        $name = Validator::dbName($args[0] ?? ($input['name'] ?? ''));
+        $user = Validator::userName((string) ($args[1] ?? ($input['user'] ?? $name)));
+
+        $existing = $runtime->dbQuery('SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?', [$name]);
+        if ($existing === []) {
+            throw new BrokerException('Database does not exist.', 3);
+        }
+
+        $runtime->dbExec('DROP DATABASE IF EXISTS `' . DbAdd::ident($name) . '`');
+        foreach (['localhost', '127.0.0.1'] as $host) {
+            try {
+                $runtime->dbExec('DROP USER IF EXISTS `' . DbAdd::ident($user) . '`@`' . DbAdd::ident($host) . '`');
+            } catch (\Throwable) {
+                // user may only exist on one host
+            }
+        }
+        $runtime->dbExec('FLUSH PRIVILEGES');
+
+        return ['name' => $name, 'user' => $user, 'dropped' => true];
+    }
+}

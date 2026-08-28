@@ -1,0 +1,89 @@
+<?php
+
+namespace App\Livewire\Auth;
+
+use App\Models\User;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\Title;
+use Livewire\Component;
+
+#[Layout('layouts.guest')]
+#[Title('Sign in · LCMP Panel')]
+class Login extends Component
+{
+    public string $email = '';
+    public string $password = '';
+
+    public function mount(): void
+    {
+        if (Auth::check()) {
+            $this->redirectRoute('dashboard', navigate: true);
+        }
+        if (! User::query()->exists()) {
+            $this->redirectRoute('setup', navigate: true);
+        }
+    }
+
+    public function authenticate(): void
+    {
+        $this->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required', 'string'],
+        ]);
+
+        $key = 'login:' . strtolower($this->email) . '|' . request()->ip();
+        if (RateLimiter::tooManyAttempts($key, (int) config('lcmp.login.max_attempts', 5))) {
+            throw ValidationException::withMessages([
+                'email' => 'Too many attempts. Try again shortly.',
+            ]);
+        }
+
+        $user = User::query()->where('email', $this->email)->first();
+        if ($user?->isLocked()) {
+            throw ValidationException::withMessages([
+                'email' => 'This account is locked. Try again later.',
+            ]);
+        }
+
+        if (! $user || ! Hash::check($this->password, $user->password)) {
+            RateLimiter::hit($key, (int) config('lcmp.login.decay_seconds', 60));
+            if ($user) {
+                $user->increment('failed_logins');
+                if ($user->failed_logins >= (int) config('lcmp.login.lockout_attempts', 10)) {
+                    $user->forceFill([
+                        'locked_until' => now()->addMinutes((int) config('lcmp.login.lockout_minutes', 15)),
+                    ])->save();
+                }
+            }
+            throw ValidationException::withMessages(['email' => 'Those credentials do not match.']);
+        }
+
+        RateLimiter::clear($key);
+        $user->forceFill(['failed_logins' => 0, 'locked_until' => null])->save();
+
+        if ($user->hasTwoFactorEnabled()) {
+            session(['login.id' => $user->id]);
+            $this->redirectRoute('two-factor.challenge', navigate: true);
+            return;
+        }
+
+        Auth::login($user);
+        request()->session()->regenerate();
+        request()->session()->put('last_activity_at', time());
+        $user->forceFill([
+            'last_login_at' => now(),
+            'last_login_ip' => request()->ip(),
+        ])->save();
+
+        $this->redirectRoute('two-factor.setup', navigate: true);
+    }
+
+    public function render()
+    {
+        return view('livewire.auth.login');
+    }
+}

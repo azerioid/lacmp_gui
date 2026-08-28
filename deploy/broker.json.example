@@ -1,0 +1,28 @@
+{
+    "paths": {
+        "www_root": "/data/www",
+        "caddy_confd": "/etc/caddy/conf.d",
+        "caddyfile": "/etc/caddy/Caddyfile",
+        "caddy_bin": "/usr/bin/caddy",
+        "audit_log": "/var/log/lcmp-panel/broker-audit.log",
+        "mariadb_server_cnf": "/etc/mysql/mariadb.conf.d/50-server.cnf",
+        "artisan": "/usr/local/lib/lcmp-panel/web/artisan",
+        "staging_dir": "/var/lib/lcmp-panel/staging",
+        "cron_d": "/etc/cron.d/lcmp-panel",
+        "panel_root": "/usr/local/lib/lcmp-panel"
+    },
+    "web_user": "caddy",
+    "mariadb": {
+        "socket": "/run/mysqld/mysqld.sock",
+        "user": "lcmp_panel_admin",
+        "password": "CHANGE_ME"
+    },
+    "readonly_vhosts": ["projob.az", "www.projob.az"],
+    "logs": {
+        "caddy": "/var/log/caddy/access.log",
+        "mariadb": "/var/log/mysql/error.log",
+        "php-fpm": "/var/log/www-error.log",
+        "php-slow": "/var/log/www-slow.log",
+        "panel-audit": "/var/log/lcmp-panel/broker-audit.log"
+    }
+}
