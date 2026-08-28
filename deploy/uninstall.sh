@@ -49,6 +49,16 @@ if [[ -z "${PHP_VER}" ]]; then
     fi
 fi
 
+mariadb_admin() {
+    if [[ -f /etc/mysql/debian.cnf ]]; then
+        mariadb --defaults-file=/etc/mysql/debian.cnf "$@"
+    elif [[ -f /root/.my.cnf ]]; then
+        mariadb --defaults-file=/root/.my.cnf "$@"
+    else
+        mariadb --protocol=socket "$@"
+    fi
+}
+
 rm -f /etc/sudoers.d/lcmp-panel
 if command -v visudo >/dev/null 2>&1; then
     visudo -c >/dev/null || echo "Warning: visudo -c failed after removing panel sudoers." >&2
@@ -131,7 +141,7 @@ if [[ -f /data/www/lcmp-panel/web/artisan && -f /data/www/lcmp-panel/broker/brok
 fi
 
 if [[ "${DROP_DB}" -eq 1 ]]; then
-    mariadb --protocol=socket -e "DROP DATABASE IF EXISTS lcmp_panel; DROP USER IF EXISTS 'lcmp_panel'@'localhost'; DROP USER IF EXISTS 'lcmp_panel'@'127.0.0.1'; DROP USER IF EXISTS 'lcmp_panel_admin'@'localhost'; DROP USER IF EXISTS 'lcmp_panel_admin'@'127.0.0.1'; FLUSH PRIVILEGES;" || true
+    mariadb_admin -e "DROP DATABASE IF EXISTS lcmp_panel; DROP USER IF EXISTS 'lcmp_panel'@'localhost'; DROP USER IF EXISTS 'lcmp_panel'@'127.0.0.1'; DROP USER IF EXISTS 'lcmp_panel_admin'@'localhost'; DROP USER IF EXISTS 'lcmp_panel_admin'@'127.0.0.1'; FLUSH PRIVILEGES;"
     rm -rf /etc/lcmp-panel
     echo "Dropped panel DB users and /etc/lcmp-panel."
 else

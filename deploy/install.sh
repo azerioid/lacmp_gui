@@ -99,6 +99,18 @@ COMPOSER_BIN="$(command -v composer || true)"
 PHP_BIN="$(command -v php || true)"
 [[ -x "${PHP_BIN}" ]] || { echo "php CLI is not on PATH (the wrapper should have installed php-cli)" >&2; exit 1; }
 
+# Local admin for CREATE USER. Ubuntu/Debian LCMP uses debian-sys-maint
+# (unix root is mysql_native_password, so a bare socket login fails).
+mariadb_admin() {
+    if [[ -f /etc/mysql/debian.cnf ]]; then
+        mariadb --defaults-file=/etc/mysql/debian.cnf "$@"
+    elif [[ -f /root/.my.cnf ]]; then
+        mariadb --defaults-file=/root/.my.cnf "$@"
+    else
+        mariadb --protocol=socket "$@"
+    fi
+}
+
 pool_dir() {
     if [[ -d "/etc/php/${PHP_VER}/fpm/pool.d" ]]; then
         echo "/etc/php/${PHP_VER}/fpm/pool.d"
@@ -170,7 +182,7 @@ APP_PASS=""
 if [[ ! -f /etc/lcmp-panel/broker.json || "${RESET_DB}" -eq 1 ]]; then
     ADMIN_PASS="$(openssl rand -hex 32)"
     APP_PASS="$(openssl rand -hex 24)"
-    mariadb --protocol=socket <<SQL
+    mariadb_admin <<SQL
 CREATE DATABASE IF NOT EXISTS \`${PANEL_DB}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '${ADMIN_USER}'@'localhost' IDENTIFIED BY '${ADMIN_PASS}';
 CREATE USER IF NOT EXISTS '${ADMIN_USER}'@'127.0.0.1' IDENTIFIED BY '${ADMIN_PASS}';
