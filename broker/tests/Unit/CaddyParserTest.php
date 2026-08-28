@@ -40,6 +40,20 @@ final class CaddyParserTest extends TestCase
         $this->assertFalse($parsed['tls']);
     }
 
+    public function test_marks_panel_localhost_vhost_readonly(): void
+    {
+        $contents = <<<'CADDY'
+http://127.0.0.1:6969 {
+    bind 127.0.0.1
+    root * /usr/local/lib/lcmp-panel/web/public
+    php_fastcgi unix//run/php/lcmp-panel.sock
+}
+CADDY;
+        $parsed = CaddyParser::parseFile('/etc/caddy/conf.d/lcmp-panel.conf', $contents, ['projob.az']);
+        $this->assertTrue($parsed['readonly']);
+        $this->assertSame('php', $parsed['type']);
+    }
+
     public function test_extracts_www_redirect_domains(): void
     {
         $contents = <<<'CADDY'

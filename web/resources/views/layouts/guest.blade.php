@@ -19,7 +19,7 @@
             {{ $slot }}
         </div>
         <p class="mt-6 text-center font-mono text-[11px] text-zinc-600">
-            Bind: 127.0.0.1:9443 · access via SSH tunnel
+            Bind: 127.0.0.1:6969 · access via SSH tunnel
         </p>
     </div>
     @livewireScripts

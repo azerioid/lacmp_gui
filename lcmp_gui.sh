@@ -79,8 +79,11 @@ ok "Detected supported OS: ${PRETTY_NAME:-$OS_ID $OS_VER} (package manager: ${PK
 
 # --------------------------------------------------------------------------
 # LCMP must already be installed — never install or uninstall it from here.
+# `command -v` can still report a non-executable path (bind-mount / empty
+# file); require -x so a masked or broken stub is treated as missing.
 # --------------------------------------------------------------------------
-if ! command -v lcmp >/dev/null 2>&1; then
+LCMP_BIN="$(command -v lcmp 2>/dev/null || true)"
+if [[ -z "${LCMP_BIN}" || ! -x "${LCMP_BIN}" ]]; then
     die "LCMP is not installed (the 'lcmp' command was not found).
 
   LCMP GUI is only a web front-end for the LCMP stack — install LCMP first:

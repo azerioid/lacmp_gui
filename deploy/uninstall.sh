@@ -129,6 +129,12 @@ PY
     fi
 fi
 
+# Preserve APP_KEY (encrypted TOTP/settings) unless we are dropping the DB.
+if [[ "${DROP_DB}" -eq 0 && -f "${PREFIX}/web/.env" ]]; then
+    install -d -m 0750 -o root -g root /etc/lcmp-panel
+    install -m 0600 -o root -g root "${PREFIX}/web/.env" /etc/lcmp-panel/web.env
+fi
+
 rm -rf "${PREFIX}"
 rm -f /var/log/caddy/access_lcmp-panel.log
 rm -rf /var/lib/lcmp-panel

@@ -260,7 +260,19 @@ install -d -m 0770 -o "${WEB_USER}" -g "${WEB_USER}" \
 # keep directory placeholders git ships
 find "${PREFIX}/web/storage" "${PREFIX}/web/bootstrap/cache" -type d -exec chmod 0770 {} \;
 chown -R "${WEB_USER}:${WEB_USER}" "${PREFIX}/web"
+# rsync -a copies git's 0755 dirs; lock the tree down so other local users
+# cannot read the app even though PREFIX is traversable (0751).
+find "${PREFIX}/web" -type d -exec chmod 0750 {} \;
+find "${PREFIX}/web" -type f -exec chmod 0640 {} \;
+find "${PREFIX}/web/storage" "${PREFIX}/web/bootstrap/cache" -type d -exec chmod 0770 {} \;
+chmod 0750 "${PREFIX}/web" "${PREFIX}/web/public"
+# artisan must stay executable for the scheduler cron
+chmod 0750 "${PREFIX}/web/artisan"
 
+if [[ ! -f "${PREFIX}/web/.env" && -f /etc/lcmp-panel/web.env && "${RESET_DB}" -eq 0 ]]; then
+    echo "Restoring web .env preserved from a previous uninstall."
+    install -m 0640 -o "${WEB_USER}" -g "${WEB_USER}" /etc/lcmp-panel/web.env "${PREFIX}/web/.env"
+fi
 if [[ ! -f "${PREFIX}/web/.env" ]]; then
     cp "${ROOT}/web/.env.example" "${PREFIX}/web/.env"
     sed -i "s|^BROKER_DRIVER=.*|BROKER_DRIVER=sudo|" "${PREFIX}/web/.env"

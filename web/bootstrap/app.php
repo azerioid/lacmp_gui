@@ -38,7 +38,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             '2fa' => RequireTwoFactor::class,
         ]);
-        $middleware->redirectGuestsTo(fn () => route('login'));
+        $middleware->redirectGuestsTo(function () {
+            return \App\Models\User::query()->exists() ? route('login') : route('setup');
+        });
         $middleware->redirectUsersTo(fn () => route('dashboard'));
         $middleware->validateCsrfTokens(except: [
             // none — every mutation is CSRF-protected

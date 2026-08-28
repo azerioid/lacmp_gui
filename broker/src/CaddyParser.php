@@ -49,8 +49,13 @@ final class CaddyParser
         }
 
         $basename = basename($path, '.conf');
-        if ($basename === 'default') {
+        if ($basename === 'default' || $basename === 'lcmp-panel') {
             $readonly = true;
+        }
+        foreach ($domains as $d) {
+            if (str_starts_with($d, '127.0.0.1')) {
+                $readonly = true;
+            }
         }
 
         return [
