@@ -206,8 +206,9 @@ cd web
   `Listen PORT https` (do not mix HTTP and HTTPS on the same port). Re-run the
   installer.
 - **HTTP 500 on first request:** FPM could not write under `/usr/local/lib`
-  (`ProtectSystem=full`). Re-run the installer or check
-  `systemctl show phpX.Y-fpm -p ReadWritePaths`.
+  (`ProtectSystem=full`). Re-run the installer. The FPM drop-in only lists
+  existing panel storage/log paths (never `/etc/caddy` — that 226/NAMESPACE
+  on LAMP). Check `systemctl show phpX.Y-fpm -p ReadWritePaths`.
 - **Validate failed:** the previous panel vhost is restored; other sites are
   unchanged.
 - **Public IP mode cert warning:** expected (self-signed / `tls internal`). Use

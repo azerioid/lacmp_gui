@@ -208,7 +208,7 @@ validate_panel_port() {
         echo "Warning: port 22 is SSH. Choose a dedicated panel port." >&2
     fi
     if (( p < 1024 )); then
-        echo "Warning: port ${p} is privileged (<1024). Caddy may not be able to bind it." >&2
+        echo "Warning: port ${p} is privileged (<1024). The web server may not be able to bind it." >&2
     fi
     if [[ -d "${CADDY_CONFD}" ]]; then
         local hits
@@ -519,6 +519,27 @@ fpm_unit() {
         return
     fi
     echo "php${PHP_VER}-fpm"
+}
+
+# ProtectSystem=full remounts /usr (and /etc) read-only in the FPM namespace.
+# The pool only needs to write panel storage/logs. Web-server config is written
+# by the systemd-run broker — listing /etc/caddy on LAMP (or any missing dir)
+# makes systemd fail the unit with 226/NAMESPACE.
+fpm_read_write_paths() {
+    local p
+    local -a paths=()
+    for p in \
+        "${PREFIX}/web/storage" \
+        "${PREFIX}/web/bootstrap/cache" \
+        "/var/log/lcmp-panel"
+    do
+        if [[ -e "${p}" ]]; then
+            paths+=("${p}")
+        else
+            echo "Warning: skipping ReadWritePaths (path does not exist): ${p}" >&2
+        fi
+    done
+    (IFS=' '; echo "${paths[*]}")
 }
 
 COMPOSER_BIN="$(command -v composer || true)"
@@ -939,7 +960,9 @@ chmod 0640 /var/log/lcmp-panel/php-fpm.log
 touch /var/log/lcmp-panel/auth-fail.log
 chown "${WEB_USER}:${WEB_USER}" /var/log/lcmp-panel/auth-fail.log
 chmod 0640 /var/log/lcmp-panel/auth-fail.log
-install -d -m 0755 -o "${WEB_USER}" -g "${WEB_USER}" /var/log/caddy
+if [[ "${STACK}" == "lcmp" ]]; then
+    install -d -m 0755 -o "${WEB_USER}" -g "${WEB_USER}" /var/log/caddy
+fi
 install -d -m 0750 -o root -g root /var/lib/lcmp-panel
 install -d -m 0750 -o root -g root /var/lib/lcmp-panel/staging
 
@@ -1009,9 +1032,7 @@ SQL
     "vhost_format": "${VHOST_FORMAT}",
     "paths": {
         "www_root": "${WWW_ROOT}",
-        "caddy_confd": "${CADDY_CONFD}",
-        "caddyfile": "${CADDYFILE}",
-        "caddy_bin": "${CADDY_BIN}",
+$(if [[ "${STACK}" == "lcmp" ]]; then printf '%s\n' "        \"caddy_confd\": \"${CADDY_CONFD}\"," "        \"caddyfile\": \"${CADDYFILE}\"," "        \"caddy_bin\": \"${CADDY_BIN}\","; fi)
         "vhost_dir": "${VHOST_DIR}",
         "vhost_available": "${VHOST_AVAILABLE}",
         "web_log_dir": "${WEB_LOG_DIR}",
@@ -1041,6 +1062,7 @@ else
     LCMP_READONLY_JSON="${READONLY_JSON}" \
     LCMP_WWW_ROOT="${WWW_ROOT}" \
     LCMP_CADDY_CONFD="${CADDY_CONFD}" \
+    LCMP_CADDY_BIN="${CADDY_BIN:-}" \
     LCMP_ARTISAN="${PREFIX}/web/artisan" \
     LCMP_PREFIX="${PREFIX}" \
     LCMP_WEB_USER="${WEB_USER}" \
@@ -1061,8 +1083,14 @@ data["web_server"] = os.environ["LCMP_WEB_SERVICE"]
 data["web_service"] = os.environ["LCMP_WEB_SERVICE"]
 data["vhost_format"] = os.environ["LCMP_VHOST_FORMAT"]
 data.setdefault("paths", {})["www_root"] = os.environ["LCMP_WWW_ROOT"]
-data["paths"]["caddy_confd"] = os.environ["LCMP_CADDY_CONFD"]
-data["paths"]["caddyfile"] = "/etc/caddy/Caddyfile"
+if os.environ.get("LCMP_STACK") == "lcmp":
+    data["paths"]["caddy_confd"] = os.environ["LCMP_CADDY_CONFD"]
+    data["paths"]["caddyfile"] = "/etc/caddy/Caddyfile"
+    if os.environ.get("LCMP_CADDY_BIN"):
+        data["paths"]["caddy_bin"] = os.environ["LCMP_CADDY_BIN"]
+else:
+    for key in ("caddy_confd", "caddyfile", "caddy_bin"):
+        data["paths"].pop(key, None)
 data["paths"]["artisan"] = os.environ["LCMP_ARTISAN"]
 data["paths"]["panel_root"] = os.environ["LCMP_PREFIX"]
 data["paths"]["vhost_dir"] = os.environ["LCMP_VHOST_DIR"]
@@ -1298,16 +1326,17 @@ EOF
     systemd-tmpfiles --create /etc/tmpfiles.d/lcmp-panel.conf >/dev/null 2>&1 || true
     "${FPM_BIN}" -t
     UNIT="$(fpm_unit)"
-    # ProtectSystem=full remounts /usr and /etc read-only in the FPM namespace.
-    # - Panel storage/logs must be writable by the pool user (Blade compile).
-    # - /etc/caddy and friends must be writable *in the namespace* so a sudo'd
-    #   root broker is not EROFS. DAC stays root-only; the web user still cannot
-    #   write those paths. The broker wrapper also re-execs via systemd-run.
+    RW_PATHS="$(fpm_read_write_paths)"
     install -d -m 0755 "/etc/systemd/system/${UNIT}.service.d"
-    cat > "/etc/systemd/system/${UNIT}.service.d/lcmp-panel.conf" <<EOF
+    if [[ -n "${RW_PATHS}" ]]; then
+        cat > "/etc/systemd/system/${UNIT}.service.d/lcmp-panel.conf" <<EOF
 [Service]
-ReadWritePaths=${PREFIX}/web/storage ${PREFIX}/web/bootstrap/cache /var/log/lcmp-panel /etc/caddy /etc/lcmp-panel /var/log/caddy /var/lib/lcmp-panel ${WWW_ROOT}
+ReadWritePaths=${RW_PATHS}
 EOF
+    else
+        echo "Warning: no existing paths for FPM ReadWritePaths; not writing a drop-in." >&2
+        rm -f "/etc/systemd/system/${UNIT}.service.d/lcmp-panel.conf"
+    fi
     systemctl daemon-reload
     systemctl restart "${UNIT}"
 else

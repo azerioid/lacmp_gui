@@ -103,12 +103,15 @@ rm -f /etc/lcmp-panel/access.env
 SNIPPET=/etc/caddy/conf.d/lcmp-panel.conf
 if [[ -f "${SNIPPET}" ]]; then
     rm -f "${SNIPPET}"
-    if /usr/bin/caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+    if command -v caddy >/dev/null 2>&1 && [[ -f /etc/caddy/Caddyfile ]] \
+        && /usr/bin/caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
         sudo -n -u "${WEB_USER}" /usr/bin/caddy reload --config /etc/caddy/Caddyfile --address 127.0.0.1:2019 --force 2>/dev/null \
             || /usr/bin/caddy reload --config /etc/caddy/Caddyfile --address 127.0.0.1:2019 --force 2>/dev/null \
             || true
     else
-        echo "Warning: caddy validate failed after removing the panel snippet." >&2
+        if command -v caddy >/dev/null 2>&1; then
+            echo "Warning: caddy validate failed after removing the panel snippet." >&2
+        fi
     fi
 fi
 
@@ -133,7 +136,7 @@ rm -f /etc/systemd/system/caddy.service.d/lcmp-panel-reload.conf
 if [[ -d /etc/systemd/system/caddy.service.d ]] && [[ -z "$(ls -A /etc/systemd/system/caddy.service.d 2>/dev/null || true)" ]]; then
     rmdir /etc/systemd/system/caddy.service.d 2>/dev/null || true
 fi
-if [[ -f /etc/lcmp-panel/caddy-admin-managed ]]; then
+if [[ -f /etc/lcmp-panel/caddy-admin-managed ]] && [[ -f /etc/caddy/Caddyfile ]]; then
     python3 - /etc/caddy/Caddyfile <<'PY'
 import pathlib, re, sys
 path = pathlib.Path(sys.argv[1])
@@ -153,7 +156,7 @@ if n:
     print("Restored Caddy admin off (panel-managed)")
 PY
     rm -f /etc/lcmp-panel/caddy-admin-managed
-    if /usr/bin/caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+    if command -v caddy >/dev/null 2>&1 && /usr/bin/caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
         systemctl restart caddy 2>/dev/null || true
     fi
 fi
@@ -230,6 +233,8 @@ fi
 
 rm -rf "${PREFIX}"
 rm -f /var/log/caddy/access_lcmp-panel.log /var/log/caddy/lcmp-panel.log
+rm -f /var/log/apache2/lcmp-panel-error.log /var/log/apache2/lcmp-panel-access.log
+rm -f /var/log/httpd/lcmp-panel-error.log /var/log/httpd/lcmp-panel-access.log
 rm -rf /var/lib/lcmp-panel
 rm -f /var/log/lcmp-panel/auth-fail.log /var/log/lcmp-panel/php-fpm.log
 

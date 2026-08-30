@@ -18,6 +18,18 @@ final class PosixRuntimeIoFailureTest extends TestCase
         $this->assertStringContainsString('ReadWritePaths', $msg);
     }
 
+    public function test_child_env_has_home_and_path(): void
+    {
+        $method = new \ReflectionMethod(PosixRuntime::class, 'childEnv');
+        $env = $method->invoke(null);
+        $this->assertNotSame('', $env['HOME'] ?? '');
+        $this->assertArrayHasKey('PATH', $env);
+        $this->assertArrayHasKey('XDG_CONFIG_HOME', $env);
+        if (getenv('HOME') !== false && getenv('HOME') !== '') {
+            $this->assertSame(getenv('HOME'), $env['HOME']);
+        }
+    }
+
     public function test_open_basedir_stays_specific(): void
     {
         $msg = PosixRuntime::describeIoFailure('write', '/etc/caddy/conf.d/x.conf', [

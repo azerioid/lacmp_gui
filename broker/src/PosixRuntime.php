@@ -88,19 +88,26 @@ final class PosixRuntime implements Runtime
     }
 
     /**
-     * systemd-run starts the broker with an empty environment. Caddy (and
-     * similar tools) need HOME/XDG so they do not write state into cwd.
+     * systemd-run starts the broker with an empty environment. Child tools
+     * need HOME/XDG so they do not write state into cwd. Prefer the env the
+     * wrapper already set; otherwise Caddy's data dir if present, else the
+     * panel state dir (LAMP has no /var/lib/caddy).
      *
      * @return array<string,string>
      */
     private static function childEnv(): array
     {
-        $home = '/var/lib/caddy';
+        $home = getenv('HOME');
+        if (! is_string($home) || $home === '') {
+            $home = is_dir('/var/lib/caddy') ? '/var/lib/caddy' : '/var/lib/lcmp-panel';
+        }
         $path = getenv('PATH') ?: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
+        $xdgConfig = getenv('XDG_CONFIG_HOME');
+        $xdgData = getenv('XDG_DATA_HOME');
         return [
             'HOME' => $home,
-            'XDG_CONFIG_HOME' => $home . '/.config',
-            'XDG_DATA_HOME' => $home . '/.local/share',
+            'XDG_CONFIG_HOME' => (is_string($xdgConfig) && $xdgConfig !== '') ? $xdgConfig : ($home . '/.config'),
+            'XDG_DATA_HOME' => (is_string($xdgData) && $xdgData !== '') ? $xdgData : ($home . '/.local/share'),
             'PATH' => $path,
             'LC_ALL' => 'C',
         ];
