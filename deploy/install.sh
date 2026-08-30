@@ -960,13 +960,15 @@ EOF
     systemd-tmpfiles --create /etc/tmpfiles.d/lcmp-panel.conf >/dev/null 2>&1 || true
     "${FPM_BIN}" -t
     UNIT="$(fpm_unit)"
-    # ProtectSystem=full makes /usr read-only. The panel lives under
-    # /usr/local/lib; FPM must be allowed to write storage + logs or Blade
-    # compile 500s (PHP 8.4 tempnam) with an empty response.
+    # ProtectSystem=full remounts /usr and /etc read-only in the FPM namespace.
+    # - Panel storage/logs must be writable by the pool user (Blade compile).
+    # - /etc/caddy and friends must be writable *in the namespace* so a sudo'd
+    #   root broker is not EROFS. DAC stays root-only; the web user still cannot
+    #   write those paths. The broker wrapper also re-execs via systemd-run.
     install -d -m 0755 "/etc/systemd/system/${UNIT}.service.d"
     cat > "/etc/systemd/system/${UNIT}.service.d/lcmp-panel.conf" <<EOF
 [Service]
-ReadWritePaths=${PREFIX}/web/storage ${PREFIX}/web/bootstrap/cache /var/log/lcmp-panel
+ReadWritePaths=${PREFIX}/web/storage ${PREFIX}/web/bootstrap/cache /var/log/lcmp-panel /etc/caddy /etc/lcmp-panel /var/log/caddy /var/lib/lcmp-panel ${WWW_ROOT}
 EOF
     systemctl daemon-reload
     systemctl restart "${UNIT}"

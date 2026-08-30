@@ -43,6 +43,8 @@ final class VhostAdd
             $runtime->chown($root, $config->phpUser, $config->phpGroup);
         }
 
+        $this->ensureAccessLog($runtime, $config, $domain);
+
         $tmp = $confPath . '.lcmp-tmp';
         $runtime->writeFile($tmp, $contents, 0644);
         try {
@@ -86,6 +88,21 @@ final class VhostAdd
             'source' => $confPath,
             'apply' => $applied,
         ];
+    }
+
+    private function ensureAccessLog(Runtime $runtime, Config $config, string $domain): void
+    {
+        $dir = '/var/log/caddy';
+        $path = $dir . '/access_' . $domain . '.log';
+        if (!$runtime->isDir($dir)) {
+            $runtime->mkdir($dir, 0755);
+            $runtime->chown($dir, $config->webUser, $config->webUser);
+        }
+        if (!$runtime->fileExists($path)) {
+            $runtime->writeFile($path, '', 0640);
+        }
+        $runtime->chown($path, $config->webUser, $config->webUser);
+        $runtime->chmod($path, 0640);
     }
 
     private function assertNotManaged(string $domain, Config $config): void

@@ -177,11 +177,9 @@ final class CaddyApply
         }
         $errors[] = 'admin API (' . $address . ') unreachable or reload failed';
 
-        $unit = self::trySystemdReload($runtime, false);
-        if ($unit !== null) {
-            return $unit;
-        }
-        $errors[] = 'systemctl reload caddy failed';
+        // ExecReload is the same `caddy reload --address` as the API (drop-in).
+        // Retrying it after an API failure often blocks on the admin socket.
+        fwrite(STDERR, "==> Skipping systemctl reload (same admin API as step 1)\n");
 
         $restart = self::tryRestart($runtime, false);
         if ($restart !== null) {
@@ -204,6 +202,12 @@ final class CaddyApply
             return 'api';
         }
         $detail = trim($result->stderr . "\n" . $result->stdout);
+        if (self::isLiveConfigError($detail)) {
+            throw new BrokerException(
+                'Caddy rejected the live config: ' . ($detail !== '' ? $detail : 'HTTP 400'),
+                1
+            );
+        }
         if ($required) {
             throw new BrokerException(
                 'Caddy admin API reload failed at ' . $address . ($detail !== '' ? ': ' . $detail : '.'),
@@ -211,7 +215,18 @@ final class CaddyApply
             );
         }
         fwrite(STDERR, "==> Caddy admin API reload failed; trying next method\n");
+        if ($detail !== '') {
+            fwrite(STDERR, $detail . "\n");
+        }
         return null;
+    }
+
+    private static function isLiveConfigError(string $detail): bool
+    {
+        $d = strtolower($detail);
+        return str_contains($d, 'http 400')
+            || str_contains($d, 'loading config')
+            || str_contains($d, 'loading new config');
     }
 
     private static function trySystemdReload(Runtime $runtime, bool $required): ?string

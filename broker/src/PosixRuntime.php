@@ -103,7 +103,7 @@ final class PosixRuntime implements Runtime
             throw new BrokerException("Directory does not exist: {$dir}", 1);
         }
         if (@file_put_contents($path, $contents, LOCK_EX) === false) {
-            throw new BrokerException(self::ioFailure('write', $path), 1);
+            throw new BrokerException(self::describeIoFailure('write', $path, error_get_last()), 1);
         }
         @chmod($path, $mode);
     }
@@ -112,14 +112,14 @@ final class PosixRuntime implements Runtime
     {
         if (!@rename($from, $to)) {
             @unlink($from);
-            throw new BrokerException(self::ioFailure('install', $to), 1);
+            throw new BrokerException(self::describeIoFailure('install', $to, error_get_last()), 1);
         }
     }
 
     public function deleteFile(string $path): void
     {
         if (is_file($path) && !@unlink($path)) {
-            throw new BrokerException("Unable to delete {$path}.", 1);
+            throw new BrokerException(self::describeIoFailure('delete', $path, error_get_last()), 1);
         }
     }
 
@@ -139,7 +139,7 @@ final class PosixRuntime implements Runtime
             return;
         }
         if (!@mkdir($path, $mode, true) && !is_dir($path)) {
-            throw new BrokerException("Unable to create directory {$path}.", 1);
+            throw new BrokerException(self::describeIoFailure('create directory', $path, error_get_last()), 1);
         }
     }
 
@@ -243,14 +243,19 @@ final class PosixRuntime implements Runtime
         return $stmt->rowCount();
     }
 
-    private static function ioFailure(string $op, string $path): string
+    /**
+     * @param  array{message?: string}|null  $last
+     */
+    public static function describeIoFailure(string $op, string $path, ?array $last): string
     {
-        $last = error_get_last();
         $msg = is_array($last) ? (string) ($last['message'] ?? '') : '';
+        $leaf = basename($path);
         if (str_contains($msg, 'open_basedir')) {
             return 'Broker PHP is restricted by open_basedir and cannot ' . $op . ' Caddy config. Re-run the panel installer so the broker wrapper is installed.';
         }
-        $leaf = basename($path);
+        if (stripos($msg, 'read-only file system') !== false || stripos($msg, 'readonly file system') !== false) {
+            return 'the config directory is read-only for the broker context; expected the broker to leave the PHP-FPM ProtectSystem sandbox (systemd-run) or ReadWritePaths=/etc/caddy on the php-fpm unit. Re-run the panel installer.';
+        }
         if ($msg !== '') {
             return 'Broker could not ' . $op . ' ' . $leaf . ': ' . $msg;
         }

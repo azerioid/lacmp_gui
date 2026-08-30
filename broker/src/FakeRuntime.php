@@ -46,7 +46,7 @@ final class FakeRuntime implements Runtime
         $this->dirs['/etc/php'] = true;
         $this->dirs['/etc/php/8.4'] = true;
         $this->dirs['/var'] = true;
-        $this->dirs['/var/log'] = true;
+        $this->dirs['/var/log/caddy'] = true;
         $this->dirs['/var/log/lcmp-panel'] = true;
         $this->dirs['/var/lib'] = true;
         $this->dirs['/var/lib/lcmp-panel'] = true;
