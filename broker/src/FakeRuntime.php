@@ -28,6 +28,11 @@ final class FakeRuntime implements Runtime
     public int $uid = 0;
     public string $clock = '2026-08-28T07:00:00+00:00';
 
+    /** Fail the Nth dbExec (1-based). 0 = never. */
+    public int $dbExecFailAt = 0;
+
+    public int $dbExecCount = 0;
+
     /** @var list<string> */
     public array $installedPhp = ['8.3', '8.4'];
 
@@ -186,6 +191,10 @@ final class FakeRuntime implements Runtime
     public function dbExec(string $sql, array $params = []): int
     {
         $this->dbExecLog[] = $sql;
+        $this->dbExecCount++;
+        if ($this->dbExecFailAt > 0 && $this->dbExecCount === $this->dbExecFailAt) {
+            throw new BrokerException('simulated MariaDB failure.', 1);
+        }
         return 1;
     }
 }

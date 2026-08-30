@@ -18,6 +18,8 @@ final class FakeBroker
 
     public bool $failNextValidate = false;
 
+    public bool $failNextDbAdd = false;
+
     public bool $php82Failed = true;
 
     public function __construct()
@@ -28,6 +30,7 @@ final class FakeBroker
     public function reset(): void
     {
         $this->failNextValidate = false;
+        $this->failNextDbAdd = false;
         $this->php82Failed = true;
         $this->vhosts = [
             [
@@ -318,6 +321,10 @@ final class FakeBroker
 
     private function dbAdd(array $args, array $stdin): array
     {
+        if ($this->failNextDbAdd) {
+            $this->failNextDbAdd = false;
+            throw new BrokerCallException('Database already exists.', 3);
+        }
         $name = $args[0] ?? '';
         $user = $args[1] ?? $name;
         $this->databases[] = [

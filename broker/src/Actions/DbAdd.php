@@ -16,28 +16,66 @@ final class DbAdd
         $user = Validator::userName($args[1] ?? ($input['user'] ?? $name));
         $password = Validator::password((string) ($input['password'] ?? ''));
 
-        $existing = $runtime->dbQuery('SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?', [$name]);
-        if ($existing !== []) {
-            throw new BrokerException('Database already exists.', 3);
+        if (in_array($name, $config->protectedDatabases, true)) {
+            throw new BrokerException('Refusing to mutate a protected system database.', 3);
         }
 
-        $runtime->dbExec('CREATE DATABASE `' . self::ident($name) . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-        foreach (['localhost', '127.0.0.1'] as $host) {
-            $runtime->dbExec(
-                'CREATE USER IF NOT EXISTS `' . self::ident($user) . '`@`' . self::ident($host) . '` IDENTIFIED BY ?',
-                [$password]
-            );
-            $runtime->dbExec(
-                'GRANT ALL PRIVILEGES ON `' . self::ident($name) . '`.* TO `' . self::ident($user) . '`@`' . self::ident($host) . '`'
-            );
+        $existing = $runtime->dbQuery('SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?', [$name]);
+        if ($existing !== []) {
+            throw new BrokerException("Database {$name} already exists.", 3);
         }
-        $runtime->dbExec('FLUSH PRIVILEGES');
+
+        $users = $runtime->dbQuery('SELECT User, Host FROM mysql.user WHERE User = ?', [$user]);
+        if ($users !== []) {
+            throw new BrokerException("Database user {$user} already exists.", 3);
+        }
+
+        $createdDb = false;
+        $createdHosts = [];
+        try {
+            $runtime->dbExec('CREATE DATABASE `' . self::ident($name) . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+            $createdDb = true;
+            foreach (['localhost', '127.0.0.1'] as $host) {
+                $runtime->dbExec(
+                    'CREATE USER `' . self::ident($user) . '`@`' . self::ident($host) . '` IDENTIFIED BY ?',
+                    [$password]
+                );
+                $createdHosts[] = $host;
+                $runtime->dbExec(
+                    'GRANT ALL PRIVILEGES ON `' . self::ident($name) . '`.* TO `' . self::ident($user) . '`@`' . self::ident($host) . '`'
+                );
+            }
+            $runtime->dbExec('FLUSH PRIVILEGES');
+        } catch (\Throwable $e) {
+            $this->rollback($runtime, $name, $user, $createdDb, $createdHosts);
+            if ($e instanceof BrokerException) {
+                throw $e;
+            }
+            throw new BrokerException($e->getMessage(), 1);
+        }
 
         return [
             'name' => $name,
             'user' => $user,
             'hosts' => ['localhost', '127.0.0.1'],
         ];
+    }
+
+    /**
+     * @param  list<string>  $createdHosts
+     */
+    private function rollback(Runtime $runtime, string $name, string $user, bool $createdDb, array $createdHosts): void
+    {
+        try {
+            if ($createdDb) {
+                $runtime->dbExec('DROP DATABASE IF EXISTS `' . self::ident($name) . '`');
+            }
+            foreach ($createdHosts as $host) {
+                $runtime->dbExec('DROP USER IF EXISTS `' . self::ident($user) . '`@`' . self::ident($host) . '`');
+            }
+            $runtime->dbExec('FLUSH PRIVILEGES');
+        } catch (\Throwable) {
+        }
     }
 
     /**

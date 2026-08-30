@@ -149,6 +149,31 @@ class VhostPolicyTest extends TestCase
         $this->assertNotContains("a'; DROP TABLE users;--", $names);
     }
 
+    public function test_failed_db_create_does_not_reveal_password(): void
+    {
+        $this->actingAs($this->admin());
+        $this->app->make(FakeBroker::class)->failNextDbAdd = true;
+        Livewire::test(\App\Livewire\DatabasesPage::class)
+            ->set('name', 'shopdb')
+            ->set('user', 'shopuser')
+            ->call('create')
+            ->assertSet('revealedPassword', null)
+            ->assertSet('error', 'Database already exists.');
+        $this->assertNotContains('shopdb', array_column($this->app->make(FakeBroker::class)->databases, 'name'));
+    }
+
+    public function test_successful_db_create_reveals_password_once(): void
+    {
+        $this->actingAs($this->admin());
+        Livewire::test(\App\Livewire\DatabasesPage::class)
+            ->set('name', 'shopdb')
+            ->set('user', 'shopuser')
+            ->call('create')
+            ->assertSet('error', null)
+            ->assertNotSet('revealedPassword', null);
+        $this->assertContains('shopdb', array_column($this->app->make(FakeBroker::class)->databases, 'name'));
+    }
+
     private function admin(): User
     {
         $totp = new TotpService();

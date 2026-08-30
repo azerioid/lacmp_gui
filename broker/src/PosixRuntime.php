@@ -231,16 +231,55 @@ final class PosixRuntime implements Runtime
 
     public function dbQuery(string $sql, array $params = []): array
     {
-        $stmt = $this->pdo()->prepare($sql);
-        $stmt->execute($params);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        try {
+            $stmt = $this->pdo()->prepare($sql);
+            $stmt->execute($params);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (PDOException $e) {
+            throw new BrokerException(self::describePdo($e), 1);
+        }
     }
 
     public function dbExec(string $sql, array $params = []): int
     {
-        $stmt = $this->pdo()->prepare($sql);
-        $stmt->execute($params);
-        return $stmt->rowCount();
+        try {
+            if ($params !== [] && self::isPasswordDdl($sql) && count($params) === 1) {
+                $quoted = $this->pdo()->quote((string) $params[0]);
+                if ($quoted === false) {
+                    throw new BrokerException('MariaDB could not quote the password.', 1);
+                }
+                $sql = preg_replace('/\?/', $quoted, $sql, 1) ?? $sql;
+                $params = [];
+            }
+            if ($params === []) {
+                $n = $this->pdo()->exec($sql);
+                return $n === false ? 0 : (int) $n;
+            }
+            $stmt = $this->pdo()->prepare($sql);
+            $stmt->execute($params);
+            return $stmt->rowCount();
+        } catch (BrokerException $e) {
+            throw $e;
+        } catch (PDOException $e) {
+            throw new BrokerException(self::describePdo($e), 1);
+        }
+    }
+
+    private static function isPasswordDdl(string $sql): bool
+    {
+        return (bool) preg_match('/^\s*(CREATE|ALTER)\s+USER\b/i', $sql)
+            && stripos($sql, 'IDENTIFIED BY') !== false;
+    }
+
+    public static function describePdo(PDOException $e): string
+    {
+        $msg = $e->getMessage();
+        $msg = preg_replace("/IDENTIFIED BY\\s+'[^']*'/i", 'IDENTIFIED BY [redacted]', $msg) ?? $msg;
+        $msg = preg_replace('/IDENTIFIED BY\\s+"[^"]*"/i', 'IDENTIFIED BY [redacted]', $msg) ?? $msg;
+        if (str_contains($msg, "near '?'")) {
+            return 'MariaDB rejected a bound parameter in CREATE/ALTER USER; the broker quotes the password for that statement.';
+        }
+        return 'MariaDB error: ' . $msg;
     }
 
     /**
@@ -277,7 +316,7 @@ final class PosixRuntime implements Runtime
                 PDO::ATTR_EMULATE_PREPARES => false,
             ]);
         } catch (PDOException $e) {
-            throw new BrokerException('MariaDB connection failed.', 1);
+            throw new BrokerException(self::describePdo($e), 1);
         }
         return $this->pdo;
     }

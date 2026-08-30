@@ -30,8 +30,8 @@
                 <input class="field mt-1" wire:model="user" maxlength="32">
             </label>
             <div class="md:col-span-2 flex gap-2">
-                <button type="button" class="btn-ghost" wire:click="generate">Generate password</button>
                 <button type="submit" class="btn-primary">Create</button>
+                <p class="self-center text-xs text-zinc-500">A one-time password is generated only after MariaDB confirms the create.</p>
             </div>
         </form>
     @endif
@@ -89,11 +89,11 @@
         </form>
     @endif
 
-    @if ($resetUser && $resetPassword)
+    @if ($resetUser)
         <div class="panel p-5">
-            <p class="text-sm">New password for <span class="font-mono">{{ $resetUser }}</span>:</p>
-            <code class="mt-2 block font-mono text-sm">{{ $resetPassword }}</code>
-            <button type="button" class="btn-primary mt-3" wire:click="confirmReset" wire:confirm="Apply this password now?">Apply reset</button>
+            <p class="text-sm">Reset password for <span class="font-mono">{{ $resetUser }}</span>? A new password is shown only if MariaDB accepts the change.</p>
+            <button type="button" class="btn-primary mt-3" wire:click="confirmReset" wire:confirm="Apply a new password now?">Apply reset</button>
+            <button type="button" class="btn-ghost mt-3" wire:click="$set('resetUser', null)">Cancel</button>
         </div>
     @endif
 </div>

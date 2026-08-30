@@ -15,6 +15,10 @@ final class DbDel
         $name = Validator::dbName($args[0] ?? ($input['name'] ?? ''));
         $user = Validator::userName((string) ($args[1] ?? ($input['user'] ?? $name)));
 
+        if (in_array($name, $config->protectedDatabases, true)) {
+            throw new BrokerException('Refusing to mutate a protected system database.', 3);
+        }
+
         $existing = $runtime->dbQuery('SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?', [$name]);
         if ($existing === []) {
             throw new BrokerException('Database does not exist.', 3);

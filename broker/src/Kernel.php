@@ -127,8 +127,10 @@ final class Kernel
             $this->emit(false, null, $e->getMessage(), $e->errorCode);
             return $e->errorCode;
         } catch (\Throwable $e) {
-            $this->audit($action !== '' ? $action : 'crash', array_merge($args, $input), false, 1, 'Internal broker error.');
-            $this->emit(false, null, 'Internal broker error.', 1);
+            $safe = self::publicError($e);
+            fwrite(STDERR, 'broker: ' . $e::class . "\n");
+            $this->audit($action !== '' ? $action : 'crash', array_merge($args, $input), false, 1, $safe);
+            $this->emit(false, null, $safe, 1);
             return 1;
         }
     }
@@ -167,5 +169,18 @@ final class Kernel
             'error' => $error,
             'code' => $code,
         ], JSON_UNESCAPED_SLASHES) . "\n";
+    }
+
+    private static function publicError(\Throwable $e): string
+    {
+        if ($e instanceof \PDOException) {
+            return PosixRuntime::describePdo($e);
+        }
+        $msg = $e->getMessage();
+        if (preg_match('/IDENTIFIED BY|passwd\\s*=|password\\s*=/i', $msg) === 1) {
+            return $e::class . ' during broker action (details redacted).';
+        }
+        $msg = trim($msg);
+        return $msg !== '' ? $e::class . ': ' . $msg : $e::class . ' during broker action.';
     }
 }

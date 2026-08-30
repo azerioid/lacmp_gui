@@ -23,7 +23,6 @@ class DatabasesPage extends Component
     public ?string $confirmDelete = null;
     public string $confirmTyped = '';
     public ?string $resetUser = null;
-    public ?string $resetPassword = null;
     public bool $showForm = false;
 
     public function mount(BrokerClient $broker): void
@@ -31,30 +30,26 @@ class DatabasesPage extends Component
         $this->reload($broker);
     }
 
-    public function generate(): void
-    {
-        $this->revealedPassword = Format::password();
-    }
-
     public function create(BrokerClient $broker): void
     {
         $this->error = null;
+        $this->revealedPassword = null;
         try {
             $name = Validator::dbName($this->name);
             $user = Validator::userName($this->user !== '' ? $this->user : $this->name);
-            if ($this->revealedPassword === null) {
-                $this->revealedPassword = Format::password();
-            }
-            Validator::password($this->revealedPassword);
-            $res = $broker->call('db.add', [$name, $user], ['password' => $this->revealedPassword]);
+            $password = Format::password();
+            Validator::password($password);
+            $res = $broker->call('db.add', [$name, $user], ['password' => $password]);
             if (! $res->ok) {
-                $this->error = $res->error;
+                $this->error = (string) $res->error;
                 return;
             }
+            $this->revealedPassword = $password;
             $this->flash = "Created database {$name}. Copy the password now — it will not be shown again.";
             $this->reset('name', 'user', 'showForm');
             $this->reload($broker);
         } catch (\Throwable $e) {
+            $this->revealedPassword = null;
             $this->error = $e->getMessage();
         }
     }
@@ -68,6 +63,7 @@ class DatabasesPage extends Component
         $res = $broker->call('db.del', [Validator::dbName($this->confirmDelete)]);
         $this->error = $res->ok ? null : $res->error;
         $this->flash = $res->ok ? 'Database dropped.' : null;
+        $this->revealedPassword = null;
         $this->confirmDelete = null;
         $this->confirmTyped = '';
         $this->reload($broker);
@@ -76,20 +72,21 @@ class DatabasesPage extends Component
     public function startReset(string $user): void
     {
         $this->resetUser = $user;
-        $this->resetPassword = Format::password();
+        $this->revealedPassword = null;
     }
 
     public function confirmReset(BrokerClient $broker): void
     {
-        if ($this->resetUser === null || $this->resetPassword === null) {
+        if ($this->resetUser === null) {
             return;
         }
-        $res = $broker->call('db.resetpw', [Validator::userName($this->resetUser)], ['password' => $this->resetPassword]);
+        $password = Format::password();
+        Validator::password($password);
+        $res = $broker->call('db.resetpw', [Validator::userName($this->resetUser)], ['password' => $password]);
         $this->error = $res->ok ? null : $res->error;
         $this->flash = $res->ok ? 'Password reset. Copy it now.' : null;
-        $this->revealedPassword = $res->ok ? $this->resetPassword : $this->revealedPassword;
+        $this->revealedPassword = $res->ok ? $password : null;
         $this->resetUser = null;
-        $this->resetPassword = null;
         $this->reload($broker);
     }
 
