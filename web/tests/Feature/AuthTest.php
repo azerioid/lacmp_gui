@@ -45,11 +45,35 @@ class AuthTest extends TestCase
             ->assertHasErrors('email');
     }
 
-    public function test_two_factor_is_required_after_password(): void
+    public function test_failed_login_writes_fail2ban_line(): void
+    {
+        $user = $this->admin();
+        $log = storage_path('logs/auth-fail.log');
+        @unlink($log);
+
+        Livewire::test(\App\Livewire\Auth\Login::class)
+            ->set('email', $user->email)
+            ->set('password', 'wrong-password-1!')
+            ->call('authenticate')
+            ->assertHasErrors('email');
+
+        $this->assertFileExists($log);
+        $this->assertStringContainsString('LCMP_PANEL_AUTH_FAIL ip=', (string) file_get_contents($log));
+    }
+
+    public function test_unconfirmed_2fa_user_is_forced_to_setup(): void
     {
         $user = $this->admin();
         $this->actingAs($user);
         $this->get('/')->assertRedirect(route('two-factor.setup'));
+    }
+
+    public function test_require_totp_false_allows_dashboard_without_enrollment(): void
+    {
+        config(['lcmp.require_totp' => false]);
+        $user = $this->admin();
+        $this->actingAs($user);
+        $this->get('/')->assertOk();
     }
 
     public function test_confirmed_2fa_user_reaches_dashboard(): void

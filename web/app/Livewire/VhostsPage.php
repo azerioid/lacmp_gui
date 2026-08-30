@@ -97,7 +97,7 @@ class VhostsPage extends Component
     {
         return view('livewire.vhosts')->layoutData([
             'heading' => 'Virtual hosts',
-            'sub' => 'projob.az and reverse-proxy sites are read-only',
+            'sub' => 'Reverse-proxy and protected vhosts are read-only',
         ]);
     }
 }

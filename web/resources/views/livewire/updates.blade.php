@@ -25,7 +25,7 @@
     </section>
 
     <form class="panel space-y-3 p-5" onsubmit="return false;">
-        <p class="text-sm text-zinc-400">Type the confirmation phrase, then run. Security uses <span class="font-mono">unattended-upgrade</span>. Apply-all may restart services. Reboot takes <strong>every site</strong> down, including projob.az and pong.</p>
+        <p class="text-sm text-zinc-400">Type the confirmation phrase, then run. Security uses <span class="font-mono">unattended-upgrade</span>. Apply-all may restart services. Reboot takes <strong>every site</strong> down.</p>
         <input class="field max-w-md" wire:model="confirm" placeholder="APPLY-SECURITY / APPLY-ALL / REBOOT">
         <div class="flex flex-wrap gap-2">
             <button type="button" class="btn-primary" wire:click="applySecurity" wire:confirm="Apply security updates only?">Apply security</button>

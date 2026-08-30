@@ -22,8 +22,8 @@ final class Config
     public string $cronDPath = '/etc/cron.d/lcmp-panel';
     public string $webUser = 'caddy';
 
-    /** @var list<string> */
-    public array $readonlyVhosts = ['projob.az', 'www.projob.az'];
+    /** @var list<string> reverse-proxy / operator-protected vhosts (detected at install) */
+    public array $readonlyVhosts = [];
 
     /** @var list<string> */
     public array $protectedDatabases = ['information_schema', 'mysql', 'performance_schema', 'sys', 'lcmp_panel'];

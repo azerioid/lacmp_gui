@@ -13,18 +13,46 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREFIX="${PREFIX:-/usr/local/lib/lcmp-panel}"
+WWW_ROOT="${WWW_ROOT:-/data/www}"
+CADDY_CONFD="${CADDY_CONFD:-/etc/caddy/conf.d}"
+CADDYFILE="${CADDYFILE:-/etc/caddy/Caddyfile}"
 WEB_USER="${WEB_USER:-}"
 PHP_VER="${PHP_VER:-}"
 RESET_DB=0
-INSTALL_CADDY_SNIPPET=0
+# Plug-and-play: install the localhost tunnel snippet unless --skip-caddy.
+INSTALL_CADDY_SNIPPET=1
+ACCESS="${ACCESS:-}"
+PANEL_DOMAIN="${PANEL_DOMAIN:-}"
+PANEL_IP="${PANEL_IP:-}"
+PANEL_PORT="${PANEL_PORT:-6969}"
+TUNNEL_PORT=6969
+LE_EMAIL="${LE_EMAIL:-}"
+ENABLE_UFW=0
+SKIP_CADDY=0
+ALLOW_IPS=()
+EXTRA_READONLY=()
 
 usage() {
     cat <<'EOF'
-Usage: install.sh [--install-caddy-snippet] [--php=8.4] [--reset-db]
+Usage: install.sh [options]
 
-  --install-caddy-snippet  Bind the panel to 127.0.0.1:6969 (never 0.0.0.0)
-  --php=X.Y                PHP version (default: newest installed FPM)
-  --reset-db               Rotate panel DB users and rewrite broker.json + .env DB_PASSWORD
+Access (default: tunnel — localhost + SSH):
+  --access=tunnel|public   tunnel = 127.0.0.1:6969 HTTP (SSH -L)
+                           public = HTTPS on --port (domain or IP)
+  --domain=panel.example.com   Let's Encrypt (recommended for public)
+  --ip=<addr>              IP mode + tls internal (self-signed warning)
+  --port=3169              public listen port (default: 6969)
+  --allow-ip=1.2.3.4,10.0.0.0/8   optional allowlist (repeatable)
+  --email=admin@example.com      ACME email (domain mode)
+  --enable-ufw             if ufw is inactive, enable it (SSH/22 first)
+  --readonly-vhost=name    extra read-only vhost (repeatable)
+  --skip-caddy             do not write Caddy snippets
+  --php=X.Y                PHP version (default: newest FPM)
+  --reset-db               rotate panel DB users (destructive)
+
+  --install-caddy-snippet  accepted for compatibility (now the default)
+
+Public mode implies HTTPS, mandatory TOTP, fail2ban, and a firewall rule.
 EOF
 }
 
@@ -33,14 +61,80 @@ while [[ $# -gt 0 ]]; do
         --reset-db) RESET_DB=1; shift ;;
         --php=*) PHP_VER="${1#*=}"; shift ;;
         --install-caddy-snippet) INSTALL_CADDY_SNIPPET=1; shift ;;
+        --skip-caddy) SKIP_CADDY=1; INSTALL_CADDY_SNIPPET=0; shift ;;
+        --access=*) ACCESS="${1#*=}"; shift ;;
+        --access) ACCESS="${2:-}"; shift 2 ;;
+        --domain=*) PANEL_DOMAIN="${1#*=}"; shift ;;
+        --ip=*) PANEL_IP="${1#*=}"; shift ;;
+        --port=*) PANEL_PORT="${1#*=}"; shift ;;
+        --email=*) LE_EMAIL="${1#*=}"; shift ;;
+        --enable-ufw) ENABLE_UFW=1; shift ;;
+        --allow-ip=*)
+            IFS=',' read -ra _extra <<< "${1#*=}"
+            ALLOW_IPS+=("${_extra[@]}")
+            shift
+            ;;
+        --allow-ip)
+            IFS=',' read -ra _extra <<< "${2:-}"
+            ALLOW_IPS+=("${_extra[@]}")
+            shift 2
+            ;;
+        --readonly-vhost=*) EXTRA_READONLY+=("${1#*=}"); shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
 done
 
+if [[ -z "${ACCESS}" ]]; then
+    if [[ -t 0 && -t 1 ]]; then
+        echo "LCMP Panel installer"
+        echo "  tunnel  — localhost ${TUNNEL_PORT} + SSH tunnel (default, safest)"
+        echo "  public  — HTTPS on a port (domain = Let's Encrypt, or IP = self-signed)"
+        read -r -p "Access mode [tunnel/public] (default: tunnel): " ACCESS
+        ACCESS="${ACCESS:-tunnel}"
+        if [[ "${ACCESS}" == "public" ]]; then
+            read -r -p "Domain for automatic HTTPS (blank = IP / self-signed): " PANEL_DOMAIN
+            read -r -p "Public port [${PANEL_PORT}]: " _p
+            PANEL_PORT="${_p:-$PANEL_PORT}"
+            if [[ -n "${PANEL_DOMAIN}" ]]; then
+                read -r -p "Let's Encrypt email (optional): " LE_EMAIL
+            else
+                read -r -p "Public IP (blank = auto-detect): " PANEL_IP
+            fi
+            read -r -p "Allowlist CIDRs comma-separated (blank = global + fail2ban): " _a
+            if [[ -n "${_a}" ]]; then
+                IFS=',' read -ra ALLOW_IPS <<< "${_a}"
+            fi
+        fi
+    else
+        ACCESS=tunnel
+    fi
+fi
+ACCESS="$(echo "${ACCESS}" | tr '[:upper:]' '[:lower:]')"
+[[ "${ACCESS}" == "tunnel" || "${ACCESS}" == "public" ]] || { echo "Invalid --access=${ACCESS}" >&2; exit 2; }
+
+if [[ "${SKIP_CADDY}" -eq 0 ]]; then
+    INSTALL_CADDY_SNIPPET=1
+fi
+if [[ "${ACCESS}" == "public" ]]; then
+    INSTALL_CADDY_SNIPPET=1
+    SKIP_CADDY=0
+fi
+
+# trim allowlist entries
+_tmp=()
+for _a in "${ALLOW_IPS[@]+"${ALLOW_IPS[@]}"}"; do
+    _a="$(echo "${_a}" | tr -d '[:space:]')"
+    [[ -n "${_a}" ]] && _tmp+=("${_a}")
+done
+ALLOW_IPS=("${_tmp[@]+"${_tmp[@]}"}")
+
 # --- identity ----------------------------------------------------------------
 if [[ -z "${WEB_USER}" ]]; then
-    if id -u caddy >/dev/null 2>&1; then
+    _caddy_u="$(systemctl show caddy -p User --value 2>/dev/null || true)"
+    if [[ -n "${_caddy_u}" && "${_caddy_u}" != "-" && "${_caddy_u}" != "root" ]] && id -u "${_caddy_u}" >/dev/null 2>&1; then
+        WEB_USER="${_caddy_u}"
+    elif id -u caddy >/dev/null 2>&1; then
         WEB_USER=caddy
     elif id -u www-data >/dev/null 2>&1; then
         WEB_USER=www-data
@@ -99,16 +193,95 @@ COMPOSER_BIN="$(command -v composer || true)"
 PHP_BIN="$(command -v php || true)"
 [[ -x "${PHP_BIN}" ]] || { echo "php CLI is not on PATH (the wrapper should have installed php-cli)" >&2; exit 1; }
 
-# Local admin for CREATE USER. Ubuntu/Debian LCMP uses debian-sys-maint
-# (unix root is mysql_native_password, so a bare socket login fails).
+# Local admin for CREATE USER.
+# Debian/Ubuntu LCMP: debian-sys-maint in /etc/mysql/debian.cnf
+# RHEL: unix_socket as root, or /root/.my.cnf
 mariadb_admin() {
+    local bin="mariadb"
+    command -v mariadb >/dev/null 2>&1 || bin="mysql"
     if [[ -f /etc/mysql/debian.cnf ]]; then
-        mariadb --defaults-file=/etc/mysql/debian.cnf "$@"
+        "${bin}" --defaults-file=/etc/mysql/debian.cnf "$@"
     elif [[ -f /root/.my.cnf ]]; then
-        mariadb --defaults-file=/root/.my.cnf "$@"
+        "${bin}" --defaults-file=/root/.my.cnf "$@"
+    elif "${bin}" --protocol=socket -e "SELECT 1" >/dev/null 2>&1; then
+        "${bin}" --protocol=socket "$@"
     else
-        mariadb --protocol=socket "$@"
+        "${bin}" "$@"
     fi
+}
+
+detect_mysql_socket() {
+    for s in /run/mysqld/mysqld.sock /var/run/mysqld/mysqld.sock /var/lib/mysql/mysql.sock /run/mysql/mysql.sock; do
+        [[ -S "$s" ]] && { echo "$s"; return; }
+    done
+    echo "/run/mysqld/mysqld.sock"
+}
+
+detect_mariadb_cnf() {
+    for f in /etc/mysql/mariadb.conf.d/50-server.cnf /etc/my.cnf.d/server.cnf /etc/my.cnf /etc/mysql/my.cnf; do
+        [[ -f "$f" ]] && { echo "$f"; return; }
+    done
+    echo "/etc/mysql/mariadb.conf.d/50-server.cnf"
+}
+
+detect_public_ip() {
+    local ip=""
+    local u
+    for u in https://ifconfig.me https://icanhazip.com https://api.ipify.org; do
+        ip="$(curl -4 -fsS --max-time 4 "$u" 2>/dev/null | tr -d '[:space:]' || true)"
+        if [[ "${ip}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "${ip}"
+            return 0
+        fi
+    done
+    hostname -I 2>/dev/null | awk '{print $1}'
+}
+
+# Existing reverse_proxy vhosts are treated as read-only (generic; no hostnames baked in).
+detect_readonly_vhosts() {
+    python3 - "${CADDY_CONFD}" <<'PY'
+import pathlib, re, sys
+confd = pathlib.Path(sys.argv[1])
+out = []
+if confd.is_dir():
+    for p in sorted(confd.glob("*.conf")):
+        if p.name == "lcmp-panel.conf":
+            continue
+        text = p.read_text(errors="replace")
+        if not re.search(r"^\s*reverse_proxy\s+", text, re.M):
+            continue
+        stripped = re.sub(r"^\s*#.*$", "", text, flags=re.M)
+        m = re.search(r"^([^{\n]+)\{", stripped, re.M)
+        if not m:
+            continue
+        header = m.group(1).strip()
+        for part in header.split(","):
+            part = re.sub(r"^https?://", "", part.strip(), flags=re.I).lower()
+            if part and part not in (":80", ":443") and not part.startswith("127.0.0.1"):
+                out.append(part)
+print(",".join(dict.fromkeys(out)))
+PY
+}
+
+env_set() {
+    local file="$1" key="$2" value="$3"
+    python3 - "$file" "$key" "$value" <<'PY'
+import pathlib, sys
+path, key, value = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+text = path.read_text() if path.exists() else ""
+lines, found = [], False
+prefix = key + "="
+for line in text.splitlines():
+    if line.startswith(prefix) or line.startswith("#" + prefix):
+        if not found:
+            lines.append(prefix + value)
+            found = True
+    else:
+        lines.append(line)
+if not found:
+    lines.append(prefix + value)
+path.write_text("\n".join(lines) + "\n")
+PY
 }
 
 pool_dir() {
@@ -127,12 +300,37 @@ fpm_ini() {
     fi
 }
 
-echo "==> Installing LCMP Panel into ${PREFIX} (php ${PHP_VER}, user ${WEB_USER})"
+echo "==> Installing LCMP Panel into ${PREFIX} (php ${PHP_VER}, user ${WEB_USER}, access ${ACCESS})"
 
 [[ -d "${ROOT}/broker/src" && -f "${ROOT}/broker/broker" && -d "${ROOT}/web" ]] || {
     echo "Repo layout incomplete (need broker/ and web/). Partial clone?" >&2
     exit 1
 }
+
+MYSQL_SOCKET="$(detect_mysql_socket)"
+MARIADB_CNF="$(detect_mariadb_cnf)"
+CADDY_BIN="$(command -v caddy || echo /usr/bin/caddy)"
+
+READONLY_DETECTED="$(detect_readonly_vhosts || true)"
+IFS=',' read -ra _ro <<< "${READONLY_DETECTED}"
+READONLY_LIST=()
+for _r in "${_ro[@]+"${_ro[@]}"}"; do
+    [[ -n "${_r}" ]] && READONLY_LIST+=("${_r}")
+done
+for _r in "${EXTRA_READONLY[@]+"${EXTRA_READONLY[@]}"}"; do
+    [[ -n "${_r}" ]] && READONLY_LIST+=("${_r}")
+done
+# unique
+_tmp=()
+for _r in "${READONLY_LIST[@]+"${READONLY_LIST[@]}"}"; do
+    _seen=0
+    for _e in "${_tmp[@]+"${_tmp[@]}"}"; do
+        [[ "${_e}" == "${_r}" ]] && _seen=1
+    done
+    [[ "${_seen}" -eq 0 ]] && _tmp+=("${_r}")
+done
+READONLY_LIST=("${_tmp[@]+"${_tmp[@]}"}")
+READONLY_JSON="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${READONLY_LIST[@]+"${READONLY_LIST[@]}"}")"
 
 # --- layout / permissions ----------------------------------------------------
 # PREFIX 0751 root:root: web user can *traverse* into web/ but cannot list PREFIX
@@ -140,7 +338,14 @@ echo "==> Installing LCMP Panel into ${PREFIX} (php ${PHP_VER}, user ${WEB_USER}
 install -d -m 0751 -o root -g root "${PREFIX}"
 install -d -m 0750 -o root -g root "${PREFIX}/src"
 install -d -m 0750 -o root -g root /etc/lcmp-panel
-install -d -m 0750 -o root -g "${WEB_USER}" /var/log/lcmp-panel
+# 0770 so the FPM user can write php-fpm.log; broker-audit.log stays root:root.
+install -d -m 0770 -o root -g "${WEB_USER}" /var/log/lcmp-panel
+touch /var/log/lcmp-panel/php-fpm.log
+chown "${WEB_USER}:${WEB_USER}" /var/log/lcmp-panel/php-fpm.log
+chmod 0640 /var/log/lcmp-panel/php-fpm.log
+touch /var/log/lcmp-panel/auth-fail.log
+chown "${WEB_USER}:${WEB_USER}" /var/log/lcmp-panel/auth-fail.log
+chmod 0640 /var/log/lcmp-panel/auth-fail.log
 install -d -m 0755 -o "${WEB_USER}" -g "${WEB_USER}" /var/log/caddy
 install -d -m 0750 -o root -g root /var/lib/lcmp-panel
 install -d -m 0750 -o root -g root /var/lib/lcmp-panel/staging
@@ -202,12 +407,12 @@ SQL
     cat > /etc/lcmp-panel/broker.json <<EOF
 {
     "paths": {
-        "www_root": "/data/www",
-        "caddy_confd": "/etc/caddy/conf.d",
-        "caddyfile": "/etc/caddy/Caddyfile",
-        "caddy_bin": "/usr/bin/caddy",
+        "www_root": "${WWW_ROOT}",
+        "caddy_confd": "${CADDY_CONFD}",
+        "caddyfile": "${CADDYFILE}",
+        "caddy_bin": "${CADDY_BIN}",
         "audit_log": "/var/log/lcmp-panel/broker-audit.log",
-        "mariadb_server_cnf": "/etc/mysql/mariadb.conf.d/50-server.cnf",
+        "mariadb_server_cnf": "${MARIADB_CNF}",
         "artisan": "${PREFIX}/web/artisan",
         "staging_dir": "/var/lib/lcmp-panel/staging",
         "cron_d": "/etc/cron.d/lcmp-panel",
@@ -215,11 +420,11 @@ SQL
     },
     "web_user": "${WEB_USER}",
     "mariadb": {
-        "socket": "/run/mysqld/mysqld.sock",
+        "socket": "${MYSQL_SOCKET}",
         "user": "${ADMIN_USER}",
         "password": "${ADMIN_PASS}"
     },
-    "readonly_vhosts": ["projob.az", "www.projob.az"]
+    "readonly_vhosts": ${READONLY_JSON}
 }
 EOF
     chmod 0600 /etc/lcmp-panel/broker.json
@@ -227,6 +432,26 @@ EOF
     unset ADMIN_PASS
 else
     echo "Keeping existing /etc/lcmp-panel/broker.json (pass --reset-db to rotate)."
+    LCMP_READONLY_JSON="${READONLY_JSON}" \
+    LCMP_WWW_ROOT="${WWW_ROOT}" \
+    LCMP_CADDY_CONFD="${CADDY_CONFD}" \
+    LCMP_ARTISAN="${PREFIX}/web/artisan" \
+    LCMP_PREFIX="${PREFIX}" \
+    LCMP_WEB_USER="${WEB_USER}" \
+    python3 - /etc/lcmp-panel/broker.json <<'PY'
+import json, os, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+data = json.loads(path.read_text())
+data["readonly_vhosts"] = json.loads(os.environ["LCMP_READONLY_JSON"])
+data.setdefault("paths", {})["www_root"] = os.environ["LCMP_WWW_ROOT"]
+data["paths"]["caddy_confd"] = os.environ["LCMP_CADDY_CONFD"]
+data["paths"]["artisan"] = os.environ["LCMP_ARTISAN"]
+data["paths"]["panel_root"] = os.environ["LCMP_PREFIX"]
+data["web_user"] = os.environ["LCMP_WEB_USER"]
+path.write_text(json.dumps(data, indent=4) + "\n")
+PY
+    chmod 0600 /etc/lcmp-panel/broker.json
+    chown root:root /etc/lcmp-panel/broker.json
 fi
 
 # --- web app (preserve .env / storage across re-runs) ------------------------
@@ -255,6 +480,7 @@ install -d -m 0770 -o "${WEB_USER}" -g "${WEB_USER}" \
     "${PREFIX}/web/storage/framework/cache/data" \
     "${PREFIX}/web/storage/framework/sessions" \
     "${PREFIX}/web/storage/framework/views" \
+    "${PREFIX}/web/storage/framework/tmp" \
     "${PREFIX}/web/storage/app" \
     "${PREFIX}/web/bootstrap/cache"
 # keep directory placeholders git ships
@@ -275,14 +501,26 @@ if [[ ! -f "${PREFIX}/web/.env" && -f /etc/lcmp-panel/web.env && "${RESET_DB}" -
 fi
 if [[ ! -f "${PREFIX}/web/.env" ]]; then
     cp "${ROOT}/web/.env.example" "${PREFIX}/web/.env"
-    sed -i "s|^BROKER_DRIVER=.*|BROKER_DRIVER=sudo|" "${PREFIX}/web/.env"
-    sed -i "s|^BROKER_PATH=.*|BROKER_PATH=${PREFIX}/broker|" "${PREFIX}/web/.env"
-    sed -i "s|^APP_ENV=.*|APP_ENV=production|" "${PREFIX}/web/.env"
-    sed -i "s|^APP_DEBUG=.*|APP_DEBUG=false|" "${PREFIX}/web/.env"
-    sed -i "s|^APP_URL=.*|APP_URL=http://127.0.0.1:6969|" "${PREFIX}/web/.env"
+    env_set "${PREFIX}/web/.env" BROKER_DRIVER sudo
+    env_set "${PREFIX}/web/.env" BROKER_PATH "${PREFIX}/broker"
+    env_set "${PREFIX}/web/.env" APP_ENV production
+    env_set "${PREFIX}/web/.env" APP_DEBUG false
+    env_set "${PREFIX}/web/.env" DB_SOCKET "${MYSQL_SOCKET}"
+    env_set "${PREFIX}/web/.env" LCMP_WWW_ROOT "${WWW_ROOT}"
 fi
 if [[ -n "${APP_PASS}" ]]; then
-    sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=${APP_PASS}|" "${PREFIX}/web/.env"
+    env_set "${PREFIX}/web/.env" DB_PASSWORD "${APP_PASS}"
+fi
+
+if [[ "${ACCESS}" == "public" ]]; then
+    env_set "${PREFIX}/web/.env" SESSION_SECURE_COOKIE true
+    env_set "${PREFIX}/web/.env" PANEL_REQUIRE_TOTP true
+    env_set "${PREFIX}/web/.env" TRUSTED_PROXIES 127.0.0.1
+else
+    env_set "${PREFIX}/web/.env" APP_URL "http://127.0.0.1:${TUNNEL_PORT}"
+    env_set "${PREFIX}/web/.env" SESSION_SECURE_COOKIE false
+    env_set "${PREFIX}/web/.env" PANEL_REQUIRE_TOTP true
+    env_set "${PREFIX}/web/.env" TRUSTED_PROXIES 127.0.0.1
 fi
 chown "${WEB_USER}:${WEB_USER}" "${PREFIX}/web/.env"
 chmod 0640 "${PREFIX}/web/.env"
@@ -329,7 +567,10 @@ else
     echo "Keeping existing APP_KEY (encrypted settings depend on it)."
 fi
 run_as_web "${PHP_BIN} artisan migrate --force --no-interaction"
-run_as_web "${PHP_BIN} artisan view:clear --no-interaction" || true
+touch "${PREFIX}/web/storage/logs/laravel.log"
+chown "${WEB_USER}:${WEB_USER}" "${PREFIX}/web/storage/logs/laravel.log"
+chmod 0660 "${PREFIX}/web/storage/logs/laravel.log"
+run_as_web "${PHP_BIN} artisan view:cache --no-interaction" || true
 run_as_web "${PHP_BIN} artisan config:clear --no-interaction" || true
 
 # --- dedicated FPM pool + public-pool lockdown -------------------------------
@@ -413,6 +654,8 @@ pm.max_requests = 200
 php_admin_value[disable_functions] = passthru,exec,shell_exec,system,chroot,chgrp,chown,ini_alter,ini_restore
 php_admin_flag[expose_php] = off
 php_admin_value[open_basedir] = ${PREFIX}/web:/tmp:/dev/urandom:/usr/bin/sudo:/var/log/lcmp-panel
+php_admin_value[sys_temp_dir] = ${PREFIX}/web/storage/framework/tmp
+php_admin_value[upload_tmp_dir] = ${PREFIX}/web/storage/framework/tmp
 php_admin_value[session.save_path] = ${PREFIX}/web/storage/framework/sessions
 php_admin_flag[log_errors] = on
 php_admin_value[error_log] = /var/log/lcmp-panel/php-fpm.log
@@ -421,9 +664,22 @@ EOF
 
     FPM_BIN="$(fpm_bin)" || { echo "php-fpm binary for ${PHP_VER} not found" >&2; exit 1; }
     install -d -m 0755 /run/php
+    cat > /etc/tmpfiles.d/lcmp-panel.conf <<EOF
+d /run/php 0755 ${WEB_USER} ${WEB_USER} -
+EOF
+    systemd-tmpfiles --create /etc/tmpfiles.d/lcmp-panel.conf >/dev/null 2>&1 || true
     "${FPM_BIN}" -t
     UNIT="$(fpm_unit)"
-    systemctl reload "${UNIT}" || systemctl restart "${UNIT}"
+    # ProtectSystem=full makes /usr read-only. The panel lives under
+    # /usr/local/lib; FPM must be allowed to write storage + logs or Blade
+    # compile 500s (PHP 8.4 tempnam) with an empty response.
+    install -d -m 0755 "/etc/systemd/system/${UNIT}.service.d"
+    cat > "/etc/systemd/system/${UNIT}.service.d/lcmp-panel.conf" <<EOF
+[Service]
+ReadWritePaths=${PREFIX}/web/storage ${PREFIX}/web/bootstrap/cache /var/log/lcmp-panel
+EOF
+    systemctl daemon-reload
+    systemctl restart "${UNIT}"
 else
     echo "Warning: PHP-FPM pool directory not found; skip FPM pool. Panel cannot call the broker without proc_open." >&2
 fi
@@ -437,46 +693,141 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 EOF
 chmod 0644 /etc/cron.d/lcmp-panel
 
-# --- optional Caddy snippet --------------------------------------------------
+# --- Caddy snippets (localhost tunnel always; optional public HTTPS) ---------
 if [[ "${INSTALL_CADDY_SNIPPET}" -eq 1 ]]; then
-    touch /var/log/caddy/access_lcmp-panel.log
-    chown "${WEB_USER}:${WEB_USER}" /var/log/caddy/access_lcmp-panel.log
-    chmod 0640 /var/log/caddy/access_lcmp-panel.log
-    SNIPPET=/etc/caddy/conf.d/lcmp-panel.conf
+    if [[ "${ACCESS}" == "public" ]]; then
+        if [[ -n "${PANEL_DOMAIN}" && -n "${PANEL_IP}" ]]; then
+            echo "Use --domain or --ip, not both." >&2
+            exit 2
+        fi
+        if [[ -z "${PANEL_DOMAIN}" && -z "${PANEL_IP}" ]]; then
+            PANEL_IP="$(detect_public_ip)"
+            [[ -n "${PANEL_IP}" ]] || { echo "Could not detect a public IP. Pass --ip=..." >&2; exit 1; }
+        fi
+        [[ "${PANEL_PORT}" =~ ^[0-9]+$ ]] || { echo "Invalid --port" >&2; exit 2; }
+        if [[ "${PANEL_PORT}" == "80" || "${PANEL_PORT}" == "443" ]]; then
+            echo "Refusing to bind the panel on 80/443 (would collide with existing sites)." >&2
+            exit 2
+        fi
+        if [[ -n "${PANEL_DOMAIN}" ]]; then
+            env_set "${PREFIX}/web/.env" APP_URL "https://${PANEL_DOMAIN}:${PANEL_PORT}"
+        else
+            env_set "${PREFIX}/web/.env" APP_URL "https://${PANEL_IP}:${PANEL_PORT}"
+        fi
+        chown "${WEB_USER}:${WEB_USER}" "${PREFIX}/web/.env"
+    fi
+
+    install -d -m 0755 -o "${WEB_USER}" -g "${WEB_USER}" /var/log/caddy
+    touch /var/log/caddy/access_lcmp-panel.log /var/log/caddy/lcmp-panel.log
+    chown "${WEB_USER}:${WEB_USER}" /var/log/caddy/access_lcmp-panel.log /var/log/caddy/lcmp-panel.log
+    chmod 0640 /var/log/caddy/access_lcmp-panel.log /var/log/caddy/lcmp-panel.log
+
+    SNIPPET="${CADDY_CONFD}/lcmp-panel.conf"
+    install -d -m 0755 "${CADDY_CONFD}"
     BAK=""
     if [[ -e "${SNIPPET}" ]]; then
         BAK="${SNIPPET}.lcmp-bak"
         cp -a "${SNIPPET}" "${BAK}"
     fi
-    cat > "${SNIPPET}" <<EOF
-# LCMP Panel — localhost-only vhost (generated by install.sh)
-# ssh -L 6969:127.0.0.1:6969 <host>
-# then http://127.0.0.1:6969
-# Bind is 127.0.0.1 only — never 0.0.0.0:6969.
 
-http://127.0.0.1:6969 {
-    bind 127.0.0.1
-    encode gzip zstd
-    root * ${PREFIX}/web/public
-    php_fastcgi unix//run/php/lcmp-panel.sock
-    file_server
-    header {
-        X-Content-Type-Options nosniff
-        X-Frame-Options DENY
-        Referrer-Policy no-referrer
-    }
-    log {
+    ALLOW_CSV="$(IFS=','; echo "${ALLOW_IPS[*]+"${ALLOW_IPS[*]}"}")"
+    python3 - "${SNIPPET}" "${PREFIX}" "${TUNNEL_PORT}" "${ACCESS}" \
+        "${PANEL_DOMAIN}" "${PANEL_IP}" "${PANEL_PORT}" "${LE_EMAIL}" "${ALLOW_CSV}" <<'PY'
+import pathlib, sys
+snippet, prefix, tunnel_port, access, domain, ip, port, email, allow_csv = sys.argv[1:10]
+allow = [a.strip() for a in allow_csv.split(",") if a.strip()]
+web = prefix + "/web/public"
+sock = "unix//run/php/lcmp-panel.sock"
+log_block = """    log {
         output file /var/log/caddy/access_lcmp-panel.log {
             roll_size 16mb
             roll_keep 3
             roll_keep_for 7d
         }
-    }
-}
-EOF
+    }"""
+acl = ""
+if allow:
+    acl = (
+        "    @blocked not remote_ip " + " ".join(allow) + "\n"
+        "    respond @blocked \"Forbidden\" 403\n"
+    )
+headers_common = """    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy no-referrer
+        -Server
+    }"""
+parts = []
+parts.append(f"""# LCMP Panel — generated by install.sh
+# Localhost HTTP is the SSH-tunnel fallback (never 0.0.0.0).
+
+http://127.0.0.1:{tunnel_port} {{
+    bind 127.0.0.1
+    encode gzip zstd
+    root * {web}
+    php_fastcgi {sock}
+    file_server
+{headers_common}
+{log_block}
+}}
+""")
+if access == "public":
+    if domain:
+        site = domain if port in ("443", "80") else f"{domain}:{port}"
+        tls = ""
+        if email:
+            tls = f"""    tls {{
+        issuer acme {{
+            email {email}
+        }}
+    }}
+"""
+        hsts = """        Strict-Transport-Security "max-age=31536000; includeSubDomains"\n"""
+        parts.append(f"""
+https://{site} {{
+{acl}    encode gzip zstd
+    root * {web}
+    php_fastcgi {sock}
+    file_server
+    header {{
+{hsts}        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy no-referrer
+        -Server
+    }}
+{tls}    log {{
+        output file /var/log/caddy/lcmp-panel.log {{
+            roll_size 16mb
+            roll_keep 3
+            roll_keep_for 7d
+        }}
+    }}
+}}
+""")
+    else:
+        site = f"{ip}:{port}"
+        parts.append(f"""
+https://{site} {{
+    tls internal
+{acl}    encode gzip zstd
+    root * {web}
+    php_fastcgi {sock}
+    file_server
+{headers_common}
+    log {{
+        output file /var/log/caddy/lcmp-panel.log {{
+            roll_size 16mb
+            roll_keep 3
+            roll_keep_for 7d
+        }}
+    }}
+}}
+""")
+pathlib.Path(snippet).write_text("".join(parts))
+PY
     chmod 0644 "${SNIPPET}"
-    if /usr/bin/caddy validate --config /etc/caddy/Caddyfile; then
-        sudo -n -u "${WEB_USER}" /usr/bin/caddy reload --config /etc/caddy/Caddyfile --force
+    if "${CADDY_BIN}" validate --config "${CADDYFILE}"; then
+        sudo -n -u "${WEB_USER}" "${CADDY_BIN}" reload --config "${CADDYFILE}" --force
         rm -f "${BAK}"
     else
         if [[ -n "${BAK}" && -f "${BAK}" ]]; then
@@ -488,7 +839,77 @@ EOF
         exit 1
     fi
 else
-    echo "Caddy snippet not installed (default). Re-run with --install-caddy-snippet."
+    echo "Caddy snippet skipped (--skip-caddy)."
+fi
+
+# Persist access settings for uninstall (no secrets).
+_ALLOW_CSV="$(IFS=','; echo "${ALLOW_IPS[*]+"${ALLOW_IPS[*]}"}")"
+cat > /etc/lcmp-panel/access.env <<EOF
+ACCESS_MODE=${ACCESS}
+PANEL_PORT=${PANEL_PORT}
+TUNNEL_PORT=${TUNNEL_PORT}
+PANEL_HAS_DOMAIN=$([ -n "${PANEL_DOMAIN}" ] && echo 1 || echo 0)
+PANEL_ALLOW_IPS=${_ALLOW_CSV}
+EOF
+chmod 0640 /etc/lcmp-panel/access.env
+
+# --- firewall + fail2ban (public mode only) ---------------------------------
+if [[ "${ACCESS}" == "public" ]]; then
+    echo "==> Public mode: fail2ban + firewall for port ${PANEL_PORT}"
+    if command -v apt-get >/dev/null 2>&1; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get -y install fail2ban ufw >/dev/null
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf -y install fail2ban >/dev/null || true
+    fi
+
+    install -d -m 0755 /etc/fail2ban/filter.d /etc/fail2ban/jail.d
+    install -m 0644 "${ROOT}/deploy/fail2ban/filter.d/lcmp-panel.conf" /etc/fail2ban/filter.d/lcmp-panel.conf
+    cat > /etc/fail2ban/jail.d/lcmp-panel.conf <<EOF
+[lcmp-panel]
+enabled  = true
+filter   = lcmp-panel
+logpath  = /var/log/lcmp-panel/auth-fail.log
+backend  = auto
+maxretry = 5
+findtime = 600
+bantime  = 3600
+port     = ${PANEL_PORT}
+EOF
+    systemctl enable --now fail2ban 2>/dev/null || true
+    systemctl reload fail2ban 2>/dev/null || systemctl restart fail2ban 2>/dev/null || true
+
+    apply_panel_port_fw() {
+        if command -v ufw >/dev/null 2>&1; then
+            local ufw_status
+            ufw_status="$(ufw status 2>/dev/null | head -n1 || true)"
+            if echo "${ufw_status}" | grep -qi inactive; then
+                if [[ "${ENABLE_UFW}" -eq 1 ]]; then
+                    ufw allow OpenSSH >/dev/null 2>&1 || ufw allow 22/tcp >/dev/null 2>&1 || true
+                    echo y | ufw enable >/dev/null 2>&1 || true
+                else
+                    echo "Warning: ufw is inactive. Re-run with --enable-ufw (keeps SSH/22) or open port ${PANEL_PORT} yourself." >&2
+                    return 0
+                fi
+            fi
+            if [[ ${#ALLOW_IPS[@]} -gt 0 ]]; then
+                local cidr
+                for cidr in "${ALLOW_IPS[@]}"; do
+                    ufw allow from "${cidr}" to any port "${PANEL_PORT}" proto tcp comment 'lcmp-panel' >/dev/null || true
+                done
+            else
+                ufw allow "${PANEL_PORT}/tcp" comment 'lcmp-panel' >/dev/null || true
+            fi
+            echo "UFW_USED=1" >> /etc/lcmp-panel/access.env
+        elif command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active firewalld >/dev/null 2>&1; then
+            firewall-cmd --permanent --add-port="${PANEL_PORT}/tcp" >/dev/null
+            firewall-cmd --reload >/dev/null
+            echo "FIREWALLD_USED=1" >> /etc/lcmp-panel/access.env
+        else
+            echo "Warning: no ufw/firewalld; open TCP ${PANEL_PORT} on the host firewall." >&2
+        fi
+    }
+    apply_panel_port_fw
 fi
 
 # Re-assert traversal vs. secrecy after every rsync/chown.
@@ -510,8 +931,18 @@ echo "Installed."
 echo "  Broker:  ${PREFIX}/broker"
 echo "  Web:     ${PREFIX}/web"
 echo "  Sudoers: /etc/sudoers.d/lcmp-panel"
+echo "  Access:  ${ACCESS}"
 echo
-echo "First-run: open the panel and complete the setup wizard (strong password + TOTP)."
-echo "Access: ssh -L 6969:127.0.0.1:6969 <this-host>"
-echo "        then http://127.0.0.1:6969"
-echo "The panel binds to 127.0.0.1 only. Do not change it to 0.0.0.0."
+echo "SSH-tunnel fallback (always):"
+echo "  ssh -L ${TUNNEL_PORT}:127.0.0.1:${TUNNEL_PORT} <this-host>"
+echo "  then http://127.0.0.1:${TUNNEL_PORT}"
+if [[ "${ACCESS}" == "public" ]]; then
+    echo
+    echo "Public HTTPS is enabled (self-signed warning in IP mode; trusted cert in domain mode)."
+    echo "TOTP is mandatory. fail2ban jail: lcmp-panel"
+    if [[ ${#ALLOW_IPS[@]} -eq 0 ]]; then
+        echo "No IP allowlist (global). Lock later with --allow-ip=YOUR.CIDR --access=public --port=${PANEL_PORT}"
+    fi
+else
+    echo "The localhost vhost is 127.0.0.1 only. Use --access=public for HTTPS on a network port."
+fi

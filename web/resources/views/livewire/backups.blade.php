@@ -79,22 +79,22 @@
 
     <div class="panel grid gap-4 p-5 md:grid-cols-2">
         <h2 class="md:col-span-2 text-sm font-medium">Restore</h2>
-        <p class="md:col-span-2 text-sm text-zinc-400">DB restore defaults to a <strong>new</strong> database name. File restore stages first, then moves. Restoring over projob.az requires force plus typing <span class="font-mono">PROJOB.AZ</span>. Overwriting an existing database requires typing <span class="font-mono">OVERWRITE</span>.</p>
+        <p class="md:col-span-2 text-sm text-zinc-400">DB restore defaults to a <strong>new</strong> database name. File restore stages first, then moves. Restoring over a read-only (reverse-proxy) vhost requires force plus typing the domain in uppercase. Overwriting an existing database requires typing <span class="font-mono">OVERWRITE</span>.</p>
         <label class="text-xs uppercase tracking-wide text-zinc-500">Object key
             <input class="field mt-1" wire:model="restore_key">
         </label>
         <label class="text-xs uppercase tracking-wide text-zinc-500">New DB name
-            <input class="field mt-1" wire:model="restore_target" placeholder="projob_restore_1">
+            <input class="field mt-1" wire:model="restore_target" placeholder="site_restore_1">
         </label>
         <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="restore_overwrite"> Overwrite existing DB</label>
         <div><button class="btn-ghost" type="button" wire:click="restoreDb">Restore DB</button></div>
         <label class="text-xs uppercase tracking-wide text-zinc-500">Site name
             <input class="field mt-1" wire:model="restore_site">
         </label>
-        <label class="text-xs uppercase tracking-wide text-zinc-500">Confirm (OVERWRITE / PROJOB.AZ)
+        <label class="text-xs uppercase tracking-wide text-zinc-500">Confirm (OVERWRITE / SITE.EXAMPLE.COM)
             <input class="field mt-1" wire:model="restore_confirm">
         </label>
-        <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="restore_force"> Force over projob.az</label>
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="restore_force"> Force overwrite of a read-only vhost</label>
         <div class="flex gap-2">
             <button class="btn-ghost" type="button" wire:click="previewFiles">Stage / preview</button>
             <button class="btn-danger" type="button" wire:click="applyFiles" wire:confirm="Apply staged files onto the live tree?">Apply files</button>

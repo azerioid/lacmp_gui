@@ -8,12 +8,12 @@
 #
 # Usage (as root, from a clone of this repo):
 #   chmod +x lcmp_gui.sh
-#   ./lcmp_gui.sh --install-caddy-snippet
+#   ./lcmp_gui.sh
 #
 # Flags are forwarded to deploy/install.sh:
-#   --install-caddy-snippet   localhost-only Caddy vhost on 127.0.0.1:6969
-#   --php=8.4                 PHP version (default: newest installed FPM)
-#   --reset-db                rotate panel DB users (destructive)
+#   --access=tunnel|public
+#   --domain= --ip= --port= --allow-ip= --email=
+#   --php=8.4  --reset-db  --skip-caddy  --enable-ufw
 #
 set -euo pipefail
 
@@ -38,7 +38,7 @@ if [[ ! -f "${INSTALLER}" ]]; then
   This looks like a partial clone. Re-clone the full repository:
 
     git clone https://github.com/azerioid/lcmp_gui.git
-    cd lcmp_gui && chmod +x lcmp_gui.sh && ./lcmp_gui.sh --install-caddy-snippet"
+    cd lcmp_gui && chmod +x lcmp_gui.sh && ./lcmp_gui.sh"
 fi
 
 # --------------------------------------------------------------------------

@@ -24,7 +24,7 @@ class Phase2PolicyTest extends TestCase
             ->set('restore_site', 'projob.az')
             ->set('restore_force', false)
             ->call('applyFiles')
-            ->assertSet('error', 'Refusing to restore over projob.az without force + confirm PROJOB.AZ.');
+            ->assertSet('error', 'Refusing to restore over a read-only vhost without force + confirm PROJOB.AZ.');
     }
 
     public function test_restore_existing_db_refused_without_overwrite(): void

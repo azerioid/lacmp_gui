@@ -18,6 +18,9 @@ return [
 
     'session_idle_minutes' => (int) env('LCMP_SESSION_IDLE', 15),
 
+    /** Public HTTPS deployments must keep this true (installer sets it). */
+    'require_totp' => filter_var(env('PANEL_REQUIRE_TOTP', true), FILTER_VALIDATE_BOOL),
+
     'login' => [
         'max_attempts' => 5,
         'decay_seconds' => 60,

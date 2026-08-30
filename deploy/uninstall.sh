@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Reverse install.sh. Never touches projob.az, pong, Redis, MariaDB server,
-# or vhosts/databases created through the panel.
+# Reverse install.sh. Never touches existing user sites, pong, Redis,
+# MariaDB server, or databases created through the panel.
 set -euo pipefail
 
 if [[ ${EUID} -ne 0 ]]; then
@@ -65,6 +65,37 @@ if command -v visudo >/dev/null 2>&1; then
 fi
 rm -f /etc/cron.d/lcmp-panel
 
+# fail2ban jail/filter shipped by the panel
+rm -f /etc/fail2ban/filter.d/lcmp-panel.conf /etc/fail2ban/jail.d/lcmp-panel.conf
+if systemctl is-active fail2ban >/dev/null 2>&1; then
+    systemctl reload fail2ban 2>/dev/null || systemctl restart fail2ban 2>/dev/null || true
+fi
+
+PANEL_PORT=""
+if [[ -f /etc/lcmp-panel/access.env ]]; then
+    # shellcheck disable=SC1091
+    . /etc/lcmp-panel/access.env
+fi
+if [[ -n "${PANEL_PORT:-}" ]]; then
+    if command -v ufw >/dev/null 2>&1; then
+        ufw --force delete allow "${PANEL_PORT}/tcp" >/dev/null 2>&1 || true
+        if [[ -n "${PANEL_ALLOW_IPS:-}" ]]; then
+            IFS=',' read -ra _cidrs <<< "${PANEL_ALLOW_IPS}"
+            for _cidr in "${_cidrs[@]}"; do
+                _cidr="$(echo "${_cidr}" | tr -d '[:space:]')"
+                [[ -n "${_cidr}" ]] || continue
+                ufw --force delete allow from "${_cidr}" to any port "${PANEL_PORT}" proto tcp >/dev/null 2>&1 || true
+            done
+        fi
+    fi
+    if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active firewalld >/dev/null 2>&1; then
+        firewall-cmd --permanent --remove-port="${PANEL_PORT}/tcp" >/dev/null 2>&1 || true
+        firewall-cmd --reload >/dev/null 2>&1 || true
+    fi
+fi
+rm -f /etc/tmpfiles.d/lcmp-panel.conf
+rm -f /etc/lcmp-panel/access.env
+
 SNIPPET=/etc/caddy/conf.d/lcmp-panel.conf
 if [[ -f "${SNIPPET}" ]]; then
     rm -f "${SNIPPET}"
@@ -122,9 +153,17 @@ if n == 1:
     path.write_text(new)
 PY
     fi
+    rm -f "/etc/php/${PHP_VER}/fpm/pool.d/lcmp-panel.conf" 2>/dev/null || true
+    rm -f /etc/php-fpm.d/lcmp-panel.conf 2>/dev/null || true
+    rm -f "/etc/systemd/system/php${PHP_VER}-fpm.service.d/lcmp-panel.conf"
+    rm -f /etc/systemd/system/php-fpm.service.d/lcmp-panel.conf
+    rmdir "/etc/systemd/system/php${PHP_VER}-fpm.service.d" 2>/dev/null || true
+    rmdir /etc/systemd/system/php-fpm.service.d 2>/dev/null || true
     if systemctl cat "php${PHP_VER}-fpm.service" >/dev/null 2>&1; then
+        systemctl daemon-reload
         systemctl reload "php${PHP_VER}-fpm" 2>/dev/null || true
     elif systemctl cat "php-fpm.service" >/dev/null 2>&1; then
+        systemctl daemon-reload
         systemctl reload php-fpm 2>/dev/null || true
     fi
 fi
@@ -136,8 +175,9 @@ if [[ "${DROP_DB}" -eq 0 && -f "${PREFIX}/web/.env" ]]; then
 fi
 
 rm -rf "${PREFIX}"
-rm -f /var/log/caddy/access_lcmp-panel.log
+rm -f /var/log/caddy/access_lcmp-panel.log /var/log/caddy/lcmp-panel.log
 rm -rf /var/lib/lcmp-panel
+rm -f /var/log/lcmp-panel/auth-fail.log /var/log/lcmp-panel/php-fpm.log
 
 # Legacy location from the first (incorrect) deploy. Only remove if it looks
 # like our panel, never a random site under /data/www.
@@ -154,4 +194,4 @@ else
     echo "Kept /etc/lcmp-panel and the lcmp_panel database (pass --drop-db to remove)."
 fi
 
-echo "LCMP Panel removed. Existing sites (including projob.az) were not touched."
+echo "LCMP Panel removed. Existing sites were not touched."

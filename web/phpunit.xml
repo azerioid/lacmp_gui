@@ -36,5 +36,7 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="PANEL_REQUIRE_TOTP" value="true"/>
+        <env name="TRUSTED_PROXIES" value="127.0.0.1"/>
     </php>
 </phpunit>

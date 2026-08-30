@@ -145,7 +145,8 @@ final class FakeBroker
             ],
             'observed' => [
                 $this->svc('redis-server') + ['controllable' => false],
-                ['unit' => 'roadrunner', 'id' => 'roadrunner', 'description' => 'projob.az RoadRunner', 'active_state' => 'active', 'sub_state' => 'running', 'running' => true, 'controllable' => false, 'bind_hint' => '127.0.0.1:8000'],
+                ['unit' => 'roadrunner', 'id' => 'roadrunner', 'description' => 'RoadRunner (127.0.0.1:8000)', 'active_state' => 'active', 'sub_state' => 'running', 'running' => true, 'controllable' => false, 'bind_hint' => '127.0.0.1:8000'],
+                ['unit' => 'roadrunner-rpc', 'id' => 'roadrunner-rpc', 'description' => 'RoadRunner RPC (127.0.0.1:6001)', 'active_state' => 'active', 'sub_state' => 'running', 'running' => true, 'controllable' => false, 'bind_hint' => '127.0.0.1:6001'],
                 ['unit' => 'pong', 'id' => 'pong', 'description' => 'Node.js pong', 'active_state' => 'active', 'sub_state' => 'running', 'running' => true, 'controllable' => false, 'bind_hint' => '0.0.0.0:8080'],
             ],
             'warnings' => [[
@@ -241,18 +242,28 @@ final class FakeBroker
         $site = (string) ($stdin['site'] ?? '');
         $apply = (bool) ($stdin['apply'] ?? false);
         $force = (bool) ($stdin['force'] ?? false);
-        $isProjob = in_array($site, ['projob.az', 'www.projob.az'], true);
-        if ($isProjob && $apply && ! $force) {
-            throw new BrokerCallException('Refusing to restore over projob.az without force + confirm PROJOB.AZ.', 3);
+        $protected = false;
+        foreach ($this->vhosts as $v) {
+            if (($v['domain'] ?? '') === $site && ! empty($v['readonly'])) {
+                $protected = true;
+                break;
+            }
         }
-        if ($isProjob && $apply && $force) {
-            $this->requireConfirm($stdin, 'PROJOB.AZ', []);
+        $confirmToken = strtoupper($site);
+        if ($protected && $apply && ! $force) {
+            throw new BrokerCallException(
+                'Refusing to restore over a read-only vhost without force + confirm '.$confirmToken.'.',
+                3
+            );
+        }
+        if ($protected && $apply && $force) {
+            $this->requireConfirm($stdin, $confirmToken, []);
         }
         return [
             'staged' => '/var/lib/lcmp-panel/staging/restore-'.$site,
             'preview' => [$site.'/index.php'],
             'applied' => $apply,
-            'forced_projob' => $isProjob && $force && $apply,
+            'forced_readonly' => $protected && $force && $apply,
         ];
     }
 

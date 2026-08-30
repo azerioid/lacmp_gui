@@ -28,9 +28,9 @@ final class StatusAll
             $observed[] = $info;
         }
 
-        $observed[] = self::probePort($runtime, 'roadrunner', '127.0.0.1', 8000, 'projob.az RoadRunner');
-        $observed[] = self::probePort($runtime, 'roadrunner-rpc', '127.0.0.1', 6001, 'projob.az RoadRunner RPC');
-        $observed[] = self::probePort($runtime, 'pong', '0.0.0.0', 8080, 'Node.js pong');
+        $observed[] = self::probePort($runtime, 'roadrunner', '127.0.0.1', 8000, 'RoadRunner (127.0.0.1:8000)');
+        $observed[] = self::probePort($runtime, 'roadrunner-rpc', '127.0.0.1', 6001, 'RoadRunner RPC (127.0.0.1:6001)');
+        $observed[] = self::probePort($runtime, 'pong', '0.0.0.0', 8080, 'listener :8080');
 
         return [
             'controlled' => $controlled,

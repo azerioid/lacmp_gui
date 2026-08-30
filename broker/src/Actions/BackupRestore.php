@@ -67,13 +67,16 @@ final class BackupRestore
         $site = Validator::siteName((string) ($input['site'] ?? ''));
         $force = (bool) ($input['force'] ?? false);
         $apply = (bool) ($input['apply'] ?? false);
-        $isProjob = in_array($site, ['projob.az', 'www.projob.az'], true)
-            || str_starts_with($site, 'projob.az');
-        if ($isProjob && $apply && !$force) {
-            throw new BrokerException('Refusing to restore over projob.az without force + confirm PROJOB.AZ.', 3);
+        $protected = in_array($site, $config->readonlyVhosts, true);
+        $confirmToken = strtoupper($site);
+        if ($protected && $apply && !$force) {
+            throw new BrokerException(
+                'Refusing to restore over a read-only vhost without force + confirm ' . $confirmToken . '.',
+                3
+            );
         }
-        if ($isProjob && $apply && $force) {
-            Validator::typedConfirm((string) ($input['confirm'] ?? ''), 'PROJOB.AZ');
+        if ($protected && $apply && $force) {
+            Validator::typedConfirm((string) ($input['confirm'] ?? ''), $confirmToken);
         }
 
         $staging = rtrim($config->stagingDir, '/') . '/restore-' . $site;
@@ -118,7 +121,7 @@ final class BackupRestore
         return [
             'destination' => $dest,
             'applied' => true,
-            'forced_projob' => $isProjob && $force,
+            'forced_readonly' => $protected && $force,
             'preview' => $listing,
             'previous' => $hadLive ? $backup : null,
         ];

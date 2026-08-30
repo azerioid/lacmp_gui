@@ -51,6 +51,7 @@ class Login extends Component
 
         if (! $user || ! Hash::check($this->password, $user->password)) {
             RateLimiter::hit($key, (int) config('lcmp.login.decay_seconds', 60));
+            \App\Support\AuthFailLog::write(request()->ip());
             if ($user) {
                 $user->increment('failed_logins');
                 if ($user->failed_logins >= (int) config('lcmp.login.lockout_attempts', 10)) {
@@ -79,7 +80,13 @@ class Login extends Component
             'last_login_ip' => request()->ip(),
         ])->save();
 
-        $this->redirectRoute('two-factor.setup', navigate: true);
+        if (config('lcmp.require_totp')) {
+            $this->redirectRoute('two-factor.setup', navigate: true);
+
+            return;
+        }
+
+        $this->redirectRoute('dashboard', navigate: true);
     }
 
     public function render()

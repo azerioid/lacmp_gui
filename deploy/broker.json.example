@@ -17,12 +17,5 @@
         "user": "lcmp_panel_admin",
         "password": "CHANGE_ME"
     },
-    "readonly_vhosts": ["projob.az", "www.projob.az"],
-    "logs": {
-        "caddy": "/var/log/caddy/access.log",
-        "mariadb": "/var/log/mysql/error.log",
-        "php-fpm": "/var/log/www-error.log",
-        "php-slow": "/var/log/www-slow.log",
-        "panel-audit": "/var/log/lcmp-panel/broker-audit.log"
-    }
+    "readonly_vhosts": []
 }

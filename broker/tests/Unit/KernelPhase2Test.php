@@ -206,13 +206,15 @@ final class KernelPhase2Test extends TestCase
     {
         $this->spaces->put('/lcmp-backups/lcmp/files/projob.az/fixture.bin', ArchiveCrypto::encrypt('tgz', 'abcdefghijklmnopqrst'));
         $rt = new FakeRuntime();
+        $cfg = new Config();
+        $cfg->readonlyVhosts = ['projob.az', 'www.projob.az'];
         [$code, $json] = $this->capture(
-            $this->kernel($rt),
+            $this->kernel($rt, $cfg),
             ['broker', 'backup.restore.files', 'lcmp/files/projob.az/fixture.bin'],
             $this->stdin() + ['site' => 'projob.az', 'apply' => true]
         );
         $this->assertNotSame(0, $code);
-        $this->assertStringContainsString('projob.az', $json['error']);
+        $this->assertStringContainsString('read-only vhost', $json['error']);
         $moved = array_filter($rt->execLog, static fn ($row) => ($row['command'][0] ?? '') === '/bin/mv');
         $this->assertSame([], $moved);
     }
@@ -223,8 +225,10 @@ final class KernelPhase2Test extends TestCase
         $rt = new FakeRuntime();
         $rt->dirs['/data/www/projob.az'] = true;
         $rt->dirs['/var/lib/lcmp-panel/staging/restore-projob.az/projob.az'] = true;
+        $cfg = new Config();
+        $cfg->readonlyVhosts = ['projob.az', 'www.projob.az'];
         [$code] = $this->capture(
-            $this->kernel($rt),
+            $this->kernel($rt, $cfg),
             ['broker', 'backup.restore.files', 'lcmp/files/projob.az/fixture.bin'],
             $this->stdin() + ['site' => 'projob.az', 'apply' => true, 'force' => true, 'confirm' => 'PROJOB.AZ']
         );
