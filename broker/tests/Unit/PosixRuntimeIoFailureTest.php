@@ -15,7 +15,7 @@ final class PosixRuntimeIoFailureTest extends TestCase
         ]);
         $this->assertStringContainsString('read-only for the broker context', $msg);
         $this->assertStringContainsString('ProtectSystem', $msg);
-        $this->assertStringContainsString('ReadWritePaths=/etc/caddy', $msg);
+        $this->assertStringContainsString('ReadWritePaths', $msg);
     }
 
     public function test_open_basedir_stays_specific(): void

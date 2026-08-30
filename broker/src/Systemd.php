@@ -77,7 +77,7 @@ final class Systemd
      */
     public static function applyCaddy(Runtime $runtime, Config $config, string $mode = 'auto', array $expectPorts = []): array
     {
-        return CaddyApply::run($runtime, $config, $mode, $expectPorts);
+        return \LcmpPanel\Broker\Web\WebServers::for($config)->reload($runtime, $config, $mode, $expectPorts);
     }
 
     public static function statusRaw(Runtime $runtime, string $unit): string

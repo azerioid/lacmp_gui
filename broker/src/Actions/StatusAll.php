@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace LcmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\CaddyParser;
 use LcmpPanel\Broker\Config;
 use LcmpPanel\Broker\ProcMetrics;
 use LcmpPanel\Broker\Runtime;
@@ -59,7 +58,7 @@ final class StatusAll
             break;
         }
 
-        foreach (self::caddyUpstreams($runtime, $config) as $row) {
+        foreach (self::proxyUpstreams($runtime, $config) as $row) {
             if ($row['running']) {
                 $push($row);
             }
@@ -90,23 +89,19 @@ final class StatusAll
     }
 
     /** @return list<array<string,mixed>> */
-    private static function caddyUpstreams(Runtime $runtime, Config $config): array
+    private static function proxyUpstreams(Runtime $runtime, Config $config): array
     {
         $byUpstream = [];
-        foreach ($runtime->glob(rtrim($config->caddyConfD, '/') . '/*.conf') as $file) {
-            if (basename($file) === 'lcmp-panel.conf' || basename($file) === 'default.conf') {
-                continue;
-            }
-            try {
-                $parsed = CaddyParser::parseFile($file, $runtime->readFile($file), $config->readonlyVhosts);
-            } catch (\Throwable) {
+        foreach (\LcmpPanel\Broker\Web\WebServers::for($config)->listVhosts($runtime, $config) as $parsed) {
+            $base = basename((string) ($parsed['source'] ?? ''), '.conf');
+            if ($base === 'lcmp-panel' || $base === 'default') {
                 continue;
             }
             $proxy = $parsed['reverse_proxy'] ?? null;
             if (!is_string($proxy) || !self::isBindSpec($proxy)) {
                 continue;
             }
-            $label = (string) ($parsed['domain'] ?? basename($file, '.conf'));
+            $label = (string) ($parsed['domain'] ?? $base);
             $byUpstream[$proxy][] = $label;
         }
 

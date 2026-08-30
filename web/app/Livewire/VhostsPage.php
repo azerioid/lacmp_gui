@@ -85,10 +85,10 @@ class VhostsPage extends Component
             return 'Broker PHP is restricted by open_basedir. Re-run the panel installer so the broker wrapper is installed.';
         }
         if (str_contains($raw, 'read-only for the broker context') || str_contains($raw, 'Read-only file system')) {
-            return 'Caddy config is read-only in the panel process namespace. Re-run the installer so the broker leaves the PHP-FPM sandbox (ProtectSystem).';
+            return 'Web-server config is read-only in the panel process namespace. Re-run the installer so the broker leaves the PHP-FPM sandbox (ProtectSystem).';
         }
 
-        return (string) preg_replace('#/etc/caddy/conf\.d/\S+#', 'an existing vhost', $raw);
+        return (string) preg_replace('#(?:/etc/caddy/conf\.d|/etc/apache2/sites-(?:available|enabled)|/etc/httpd/conf\.d/vhost)/\S+#', 'an existing vhost', $raw);
     }
 
     private function reload(BrokerClient $broker): void

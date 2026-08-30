@@ -63,7 +63,7 @@
         </div>
         <div>
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="include_fpm"> Include PHP-FPM pools</label>
-            <button class="btn-primary mt-3" type="button" wire:click="runCaddy">Backup Caddy now</button>
+            <button class="btn-primary mt-3" type="button" wire:click="runCaddy">Backup web config now</button>
         </div>
     </div>
 

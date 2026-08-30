@@ -293,7 +293,7 @@ final class PosixRuntime implements Runtime
             return 'Broker PHP is restricted by open_basedir and cannot ' . $op . ' Caddy config. Re-run the panel installer so the broker wrapper is installed.';
         }
         if (stripos($msg, 'read-only file system') !== false || stripos($msg, 'readonly file system') !== false) {
-            return 'the config directory is read-only for the broker context; expected the broker to leave the PHP-FPM ProtectSystem sandbox (systemd-run) or ReadWritePaths=/etc/caddy on the php-fpm unit. Re-run the panel installer.';
+            return 'the config directory is read-only for the broker context; expected the broker to leave the PHP-FPM ProtectSystem sandbox (systemd-run) or ReadWritePaths on the php-fpm unit for the vhost directory. Re-run the panel installer.';
         }
         if ($msg !== '') {
             return 'Broker could not ' . $op . ' ' . $leaf . ': ' . $msg;

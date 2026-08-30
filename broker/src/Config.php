@@ -9,6 +9,14 @@ final class Config
     public string $caddyConfD = '/etc/caddy/conf.d';
     public string $caddyfile = '/etc/caddy/Caddyfile';
     public string $caddyBin = '/usr/bin/caddy';
+    public string $stack = 'lcmp';
+    public string $webServer = 'caddy';
+    public string $webService = 'caddy';
+    public string $vhostDir = '/etc/caddy/conf.d';
+    public string $vhostAvailableDir = '';
+    public string $vhostFormat = 'caddyfile';
+    public string $apacheCtl = '/usr/sbin/apachectl';
+    public string $webLogDir = '/var/log/caddy';
     public string $auditLog = '/var/log/lcmp-panel/broker-audit.log';
     public string $mysqlSocket = '/run/mysqld/mysqld.sock';
     public string $mysqlUser = 'lcmp_panel_admin';
@@ -60,6 +68,25 @@ final class Config
         $cfg->caddyConfD = (string) ($data['paths']['caddy_confd'] ?? $cfg->caddyConfD);
         $cfg->caddyfile = (string) ($data['paths']['caddyfile'] ?? $cfg->caddyfile);
         $cfg->caddyBin = (string) ($data['paths']['caddy_bin'] ?? $cfg->caddyBin);
+        $cfg->stack = (string) ($data['stack'] ?? $cfg->stack);
+        $cfg->webServer = (string) ($data['web_server'] ?? $cfg->webServer);
+        $cfg->webService = (string) ($data['web_service'] ?? $cfg->webService);
+        $cfg->vhostFormat = (string) ($data['vhost_format'] ?? $cfg->vhostFormat);
+        $cfg->apacheCtl = (string) ($data['paths']['apache_ctl'] ?? $cfg->apacheCtl);
+        if ($cfg->stack === 'lamp') {
+            $cfg->webServer = (string) ($data['web_server'] ?? 'apache');
+            $cfg->webService = (string) ($data['web_service'] ?? 'apache2');
+            $cfg->vhostFormat = (string) ($data['vhost_format'] ?? 'apache');
+            $cfg->vhostDir = (string) ($data['paths']['vhost_dir'] ?? '/etc/apache2/sites-enabled');
+            $cfg->vhostAvailableDir = (string) ($data['paths']['vhost_available'] ?? '/etc/apache2/sites-available');
+            $cfg->webLogDir = (string) ($data['paths']['web_log_dir'] ?? ($cfg->webService === 'httpd' ? '/var/log/httpd' : '/var/log/apache2'));
+            $cfg->controllableServices = [$cfg->webService, 'mariadb'];
+            $cfg->logPaths['caddy'] = rtrim($cfg->webLogDir, '/') . '/access.log';
+        } else {
+            $cfg->vhostDir = (string) ($data['paths']['vhost_dir'] ?? $cfg->caddyConfD);
+            $cfg->vhostAvailableDir = (string) ($data['paths']['vhost_available'] ?? '');
+            $cfg->webLogDir = (string) ($data['paths']['web_log_dir'] ?? $cfg->webLogDir);
+        }
         $cfg->auditLog = (string) ($data['paths']['audit_log'] ?? $cfg->auditLog);
         $cfg->mariadbServerCnf = (string) ($data['paths']['mariadb_server_cnf'] ?? $cfg->mariadbServerCnf);
         $cfg->panelRoot = (string) ($data['paths']['panel_root'] ?? $cfg->panelRoot);
@@ -67,6 +94,8 @@ final class Config
         $cfg->stagingDir = (string) ($data['paths']['staging_dir'] ?? $cfg->stagingDir);
         $cfg->cronDPath = (string) ($data['paths']['cron_d'] ?? $cfg->cronDPath);
         $cfg->webUser = (string) ($data['web_user'] ?? $cfg->webUser);
+        $cfg->phpUser = $cfg->webUser;
+        $cfg->phpGroup = $cfg->webUser;
         $cfg->mysqlSocket = (string) ($data['mariadb']['socket'] ?? $cfg->mysqlSocket);
         $cfg->mysqlUser = (string) ($data['mariadb']['user'] ?? $cfg->mysqlUser);
         $cfg->mysqlPassword = (string) ($data['mariadb']['password'] ?? $cfg->mysqlPassword);
@@ -118,6 +147,12 @@ final class Config
             }
         }
         return "unix//run/php/php{$version}-fpm.sock";
+    }
+
+    public function phpFpmUnixPath(string $version, ?Runtime $runtime = null): string
+    {
+        $sock = $this->phpFpmSocket($version, $runtime);
+        return preg_replace('#^unix/+#', '/', $sock) ?? "/run/php/php{$version}-fpm.sock";
     }
 
     public function phpIniPath(string $version): string

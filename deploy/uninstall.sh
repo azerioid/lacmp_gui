@@ -32,12 +32,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${WEB_USER}" ]]; then
-    if id -u caddy >/dev/null 2>&1; then
-        WEB_USER=caddy
-    elif id -u www-data >/dev/null 2>&1; then
+    if id -u www-data >/dev/null 2>&1; then
         WEB_USER=www-data
-    else
+    elif id -u apache >/dev/null 2>&1; then
+        WEB_USER=apache
+    elif id -u caddy >/dev/null 2>&1; then
         WEB_USER=caddy
+    else
+        WEB_USER=www-data
     fi
 fi
 
@@ -109,6 +111,23 @@ if [[ -f "${SNIPPET}" ]]; then
         echo "Warning: caddy validate failed after removing the panel snippet." >&2
     fi
 fi
+
+for _ap in /etc/apache2/sites-available/lcmp-panel.conf /etc/httpd/conf.d/vhost/lcmp-panel.conf; do
+    if [[ -f "${_ap}" ]]; then
+        command -v a2dissite >/dev/null 2>&1 && a2dissite lcmp-panel >/dev/null 2>&1 || true
+        rm -f "${_ap}" /etc/apache2/sites-enabled/lcmp-panel.conf
+        rm -f /etc/apache2/conf-available/lcmp-panel-listen.conf /etc/apache2/conf-enabled/lcmp-panel-listen.conf
+        rm -f /etc/httpd/conf.d/lcmp-panel-listen.conf
+        _ctl="$(command -v apache2ctl || command -v apachectl || true)"
+        _unit=apache2
+        systemctl cat httpd.service >/dev/null 2>&1 && _unit=httpd
+        if [[ -n "${_ctl}" ]] && "${_ctl}" -t >/dev/null 2>&1; then
+            systemctl reload "${_unit}" 2>/dev/null || true
+        else
+            echo "Warning: Apache configtest failed after removing the panel vhost." >&2
+        fi
+    fi
+done
 
 rm -f /etc/systemd/system/caddy.service.d/lcmp-panel-reload.conf
 if [[ -d /etc/systemd/system/caddy.service.d ]] && [[ -z "$(ls -A /etc/systemd/system/caddy.service.d 2>/dev/null || true)" ]]; then

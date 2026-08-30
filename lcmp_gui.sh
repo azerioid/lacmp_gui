@@ -3,8 +3,8 @@
 # lcmp_gui.sh — thin preflight wrapper for LCMP Panel.
 # Repo: https://github.com/azerioid/lcmp_gui
 #
-# REQUIREMENT: teddysun/lcmp must already be installed. This wrapper never
-# installs, stops, or reconfigures Caddy/MariaDB/PHP sites.
+# REQUIREMENT: teddysun/lcmp (Caddy) or teddysun/lamp (Apache) must already be installed.
+# This wrapper never installs, stops, or reconfigures the stack's sites.
 #
 # Usage (as root, from a clone of this repo):
 #   chmod +x lcmp_gui.sh
@@ -91,40 +91,70 @@ esac
 ok "Detected supported OS: ${PRETTY_NAME:-$OS_ID $OS_VER} (package manager: ${PKG_MGR})"
 
 # --------------------------------------------------------------------------
-# LCMP must already be installed — never install or uninstall it from here.
-# `command -v` can still report a non-executable path (bind-mount / empty
-# file); require -x so a masked or broken stub is treated as missing.
+# LCMP (Caddy) or LAMP (Apache) must already be installed.
 # --------------------------------------------------------------------------
+HAS_LCMP=0
+HAS_LAMP=0
 LCMP_BIN="$(command -v lcmp 2>/dev/null || true)"
-if [[ -z "${LCMP_BIN}" || ! -x "${LCMP_BIN}" ]]; then
-    die "LCMP is not installed (the 'lcmp' command was not found).
+LAMP_BIN="$(command -v lamp 2>/dev/null || true)"
+[[ -n "${LCMP_BIN}" && -x "${LCMP_BIN}" ]] && HAS_LCMP=1
+[[ -n "${LAMP_BIN}" && -x "${LAMP_BIN}" ]] && HAS_LAMP=1
 
-  LCMP GUI is only a web front-end for the LCMP stack — install LCMP first:
+STACK_ARG=""
+for arg in "$@"; do
+    case "$arg" in
+        --stack=*) STACK_ARG="${arg#--stack=}" ;;
+    esac
+done
+
+if [[ "${HAS_LCMP}" -eq 0 && "${HAS_LAMP}" -eq 0 ]]; then
+    die "Neither LCMP nor LAMP is installed (no 'lcmp' or 'lamp' command).
+
+  This panel is a web front-end for teddysun LCMP or LAMP — install one first:
 
     ${PKG_MGR} -y install wget git
-    git clone https://github.com/teddysun/lcmp.git
+    git clone https://github.com/teddysun/lcmp.git   # Caddy stack
     cd lcmp && chmod +x *.sh && ./lcmp.sh
 
-  Then re-run this installer. This script will never install or remove LCMP."
+    # or:
+    git clone https://github.com/teddysun/lamp.git   # Apache stack
+    cd lamp && chmod 755 *.sh && ./lamp.sh
+
+  Then re-run this installer. This script will never install or remove the stack."
 fi
 
-if ! lcmp version >/dev/null 2>&1; then
+if [[ "${HAS_LCMP}" -eq 1 ]] && ! lcmp version >/dev/null 2>&1; then
     warn "'lcmp' is present but 'lcmp version' failed — the install may be broken."
+fi
+if [[ "${HAS_LAMP}" -eq 1 ]] && ! lamp version >/dev/null 2>&1; then
+    warn "'lamp' is present but 'lamp version' failed — the install may be broken."
 fi
 
 missing=()
-command -v caddy >/dev/null 2>&1 || missing+=("caddy")
 if ! command -v mariadb >/dev/null 2>&1 && ! command -v mysql >/dev/null 2>&1; then
     missing+=("mariadb")
 fi
 if ! ls -d /etc/php/*/fpm >/dev/null 2>&1 && ! ls /etc/php-fpm.d >/dev/null 2>&1; then
     missing+=("php-fpm")
 fi
+WEB_OK=0
+command -v caddy >/dev/null 2>&1 && WEB_OK=1
+command -v apache2 >/dev/null 2>&1 && WEB_OK=1
+command -v apachectl >/dev/null 2>&1 && WEB_OK=1
+command -v httpd >/dev/null 2>&1 && WEB_OK=1
+command -v apache2ctl >/dev/null 2>&1 && WEB_OK=1
+[[ "${WEB_OK}" -eq 1 ]] || missing+=("web-server (caddy or apache)")
 if [[ ${#missing[@]} -gt 0 ]]; then
-    die "LCMP command found, but these components are missing: ${missing[*]}.
-  Re-run ./lcmp.sh and make sure Caddy, MariaDB and PHP are all installed."
+    die "Stack command found, but these components are missing: ${missing[*]}.
+  Re-run ./lcmp.sh or ./lamp.sh and make sure the web server, MariaDB and PHP are installed."
 fi
-ok "LCMP is installed."
+if [[ "${HAS_LCMP}" -eq 1 && "${HAS_LAMP}" -eq 1 ]]; then
+    ok "Both LCMP and LAMP commands are present; the installer will pick the web server bound to :80/:443 (or --stack=)."
+elif [[ "${HAS_LCMP}" -eq 1 ]]; then
+    ok "LCMP (Caddy) is installed."
+else
+    ok "LAMP (Apache) is installed."
+fi
 
 # --------------------------------------------------------------------------
 # PHP version: newest installed FPM, unless the caller passed --php=

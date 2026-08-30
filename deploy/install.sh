@@ -28,6 +28,13 @@ PANEL_PORT="${PANEL_PORT:-$DEFAULT_PANEL_PORT}"
 PORT_FROM_CLI=0
 PREV_PORTS=""
 PREV_ALLOW_IPS=""
+STACK="${STACK:-auto}"
+WEB_SERVICE=""
+VHOST_DIR=""
+VHOST_AVAILABLE=""
+VHOST_FORMAT=""
+APACHE_CTL=""
+WEB_LOG_DIR=""
 LE_EMAIL="${LE_EMAIL:-}"
 ENABLE_UFW=0
 SKIP_CADDY=0
@@ -39,6 +46,71 @@ DO_FIREWALL="${DO_FIREWALL:-}"
 DO_FAIL2BAN="${DO_FAIL2BAN:-}"
 NON_INTERACTIVE=0
 DRY_RUN=0
+
+detect_stack() {
+    STACK="$(echo "${STACK}" | tr '[:upper:]' '[:lower:]')"
+    case "${STACK}" in
+        auto|lcmp|lamp) ;;
+        *) echo "Invalid --stack=${STACK} (use auto|lcmp|lamp)" >&2; exit 2 ;;
+    esac
+    local has_lcmp=0 has_lamp=0
+    command -v lcmp >/dev/null 2>&1 && has_lcmp=1
+    command -v lamp >/dev/null 2>&1 && has_lamp=1
+    if [[ "${STACK}" == "auto" ]]; then
+        local listener=""
+        listener="$(ss -tlnp 2>/dev/null | awk '$4 ~ /:80$/ {print; exit}' || true)"
+        if echo "${listener}" | grep -qi caddy; then
+            STACK=lcmp
+        elif echo "${listener}" | grep -qiE 'apache|httpd'; then
+            STACK=lamp
+        elif [[ "${has_lcmp}" -eq 1 && "${has_lamp}" -eq 0 ]]; then
+            STACK=lcmp
+        elif [[ "${has_lamp}" -eq 1 && "${has_lcmp}" -eq 0 ]]; then
+            STACK=lamp
+        elif [[ "${has_lcmp}" -eq 1 ]]; then
+            STACK=lcmp
+        elif [[ "${has_lamp}" -eq 1 ]]; then
+            STACK=lamp
+        else
+            echo "Neither LCMP nor LAMP was detected. Install teddysun/lcmp or teddysun/lamp first." >&2
+            exit 1
+        fi
+    fi
+    if [[ "${STACK}" == "lcmp" ]]; then
+        WEB_SERVICE=caddy
+        VHOST_DIR="${CADDY_CONFD}"
+        VHOST_AVAILABLE=""
+        VHOST_FORMAT=caddyfile
+        WEB_LOG_DIR=/var/log/caddy
+        CADDY_BIN="$(command -v caddy || echo /usr/bin/caddy)"
+    else
+        if [[ -d /etc/apache2/sites-available ]]; then
+            WEB_SERVICE=apache2
+            VHOST_DIR=/etc/apache2/sites-enabled
+            VHOST_AVAILABLE=/etc/apache2/sites-available
+            WEB_LOG_DIR=/var/log/apache2
+            APACHE_CTL="$(command -v apache2ctl || command -v apachectl || echo /usr/sbin/apache2ctl)"
+        else
+            WEB_SERVICE=httpd
+            VHOST_DIR=/etc/httpd/conf.d/vhost
+            VHOST_AVAILABLE=/etc/httpd/conf.d/vhost
+            WEB_LOG_DIR=/var/log/httpd
+            APACHE_CTL="$(command -v apachectl || command -v httpd || echo /usr/sbin/httpd)"
+        fi
+        VHOST_FORMAT=apache
+        CADDY_BIN=""
+        command -v a2enmod >/dev/null 2>&1 && a2enmod proxy proxy_fcgi setenvif ssl rewrite headers >/dev/null 2>&1 || true
+    fi
+    if [[ "${STACK}" == "lcmp" ]] && ! command -v caddy >/dev/null 2>&1; then
+        echo "Stack is LCMP but caddy was not found." >&2
+        exit 1
+    fi
+    if [[ "${STACK}" == "lamp" ]] && ! command -v apache2 >/dev/null 2>&1 && ! command -v httpd >/dev/null 2>&1 && ! command -v apachectl >/dev/null 2>&1 && ! command -v apache2ctl >/dev/null 2>&1; then
+        echo "Stack is LAMP but Apache (apache2/httpd) was not found." >&2
+        exit 1
+    fi
+    echo "==> Stack: ${STACK} (service ${WEB_SERVICE}, vhosts ${VHOST_DIR})"
+}
 
 parse_bool() {
     case "$(echo "${1:-}" | tr '[:upper:]' '[:lower:]')" in
@@ -54,9 +126,18 @@ caddy_port_listening() {
 }
 
 panel_snippet_uses_port() {
-    local p="$1" snippet="${CADDY_CONFD}/lcmp-panel.conf"
-    [[ -f "${snippet}" ]] || return 1
-    grep -Eq ":${p}([^0-9]|$)" "${snippet}"
+    local p="$1" f
+    for f in \
+        "${CADDY_CONFD}/lcmp-panel.conf" \
+        "${VHOST_AVAILABLE:-}/lcmp-panel.conf" \
+        "${VHOST_DIR:-}/lcmp-panel.conf" \
+        /etc/apache2/sites-available/lcmp-panel.conf \
+        /etc/httpd/conf.d/vhost/lcmp-panel.conf
+    do
+        [[ -n "${f}" && -f "${f}" ]] || continue
+        grep -Eq ":${p}([^0-9]|$)" "${f}" && return 0
+    done
+    return 1
 }
 
 collect_previous_ports() {
@@ -179,7 +260,8 @@ Security:
 
 Layout:
   --prefix=<dir>               default /usr/local/lib/lcmp-panel
-  --web-user=<user>            default: Caddy unit user, else caddy, else www-data
+  --stack=auto|lcmp|lamp       default auto (detect lcmp vs lamp)
+  --web-user=<user>            default: web-server unit user, else caddy/www-data
   --php=<X.Y>                  default: newest installed FPM
 
 Operational:
@@ -203,6 +285,8 @@ while [[ $# -gt 0 ]]; do
         --php) PHP_VER="${2:-}"; shift 2 ;;
         --prefix=*) PREFIX="${1#*=}"; shift ;;
         --prefix) PREFIX="${2:-}"; shift 2 ;;
+        --stack=*) STACK="${1#*=}"; shift ;;
+        --stack) STACK="${2:-}"; shift 2 ;;
         --web-user=*) WEB_USER="${1#*=}"; shift ;;
         --web-user) WEB_USER="${2:-}"; shift 2 ;;
         --install-caddy-snippet) INSTALL_CADDY_SNIPPET=1; shift ;;
@@ -323,6 +407,8 @@ if [[ "${ACCESS}" == "public" ]]; then
     SKIP_CADDY=0
 fi
 
+detect_stack
+
 collect_previous_ports
 validate_panel_port "${PANEL_PORT}"
 
@@ -336,15 +422,19 @@ ALLOW_IPS=("${_tmp[@]+"${_tmp[@]}"}")
 
 # --- identity ----------------------------------------------------------------
 if [[ -z "${WEB_USER}" ]]; then
-    _caddy_u="$(systemctl show caddy -p User --value 2>/dev/null || true)"
-    if [[ -n "${_caddy_u}" && "${_caddy_u}" != "-" && "${_caddy_u}" != "root" ]] && id -u "${_caddy_u}" >/dev/null 2>&1; then
-        WEB_USER="${_caddy_u}"
-    elif id -u caddy >/dev/null 2>&1; then
+    _unit_u="$(systemctl show "${WEB_SERVICE}" -p User --value 2>/dev/null || true)"
+    if [[ -n "${_unit_u}" && "${_unit_u}" != "-" && "${_unit_u}" != "root" ]] && id -u "${_unit_u}" >/dev/null 2>&1; then
+        WEB_USER="${_unit_u}"
+    elif [[ "${STACK}" == "lcmp" ]] && id -u caddy >/dev/null 2>&1; then
         WEB_USER=caddy
     elif id -u www-data >/dev/null 2>&1; then
         WEB_USER=www-data
+    elif id -u apache >/dev/null 2>&1; then
+        WEB_USER=apache
+    elif id -u caddy >/dev/null 2>&1; then
+        WEB_USER=caddy
     else
-        echo "No caddy or www-data user. Set WEB_USER=..." >&2
+        echo "No web-server user found. Set WEB_USER=..." >&2
         exit 1
     fi
 fi
@@ -442,28 +532,39 @@ detect_public_ip() {
     hostname -I 2>/dev/null | awk '{print $1}'
 }
 
-# Existing reverse_proxy vhosts are treated as read-only (generic; no hostnames baked in).
+# Reverse-proxy / managed sites are read-only (generic; no hostnames baked in).
 detect_readonly_vhosts() {
-    python3 - "${CADDY_CONFD}" <<'PY'
+    python3 - "${VHOST_DIR:-${CADDY_CONFD}}" "${CADDY_CONFD}" "${VHOST_AVAILABLE:-}" <<'PY'
 import pathlib, re, sys
-confd = pathlib.Path(sys.argv[1])
 out = []
-if confd.is_dir():
+seen_files = set()
+for arg in sys.argv[1:]:
+    confd = pathlib.Path(arg)
+    if not arg or not confd.is_dir():
+        continue
     for p in sorted(confd.glob("*.conf")):
-        if p.name == "lcmp-panel.conf":
+        if p.name == "lcmp-panel.conf" or p in seen_files:
             continue
+        seen_files.add(p)
         text = p.read_text(errors="replace")
-        if not re.search(r"^\s*reverse_proxy\s+", text, re.M):
-            continue
         stripped = re.sub(r"^\s*#.*$", "", text, flags=re.M)
-        m = re.search(r"^([^{\n]+)\{", stripped, re.M)
-        if not m:
+        is_proxy = bool(
+            re.search(r"^\s*reverse_proxy\s+", stripped, re.M)
+            or re.search(r"^\s*ProxyPass\s+", stripped, re.M)
+        )
+        if not is_proxy:
             continue
-        header = m.group(1).strip()
-        for part in header.split(","):
-            part = re.sub(r"^https?://", "", part.strip(), flags=re.I).lower()
-            if part and part not in (":80", ":443") and not part.startswith("127.0.0.1"):
-                out.append(part)
+        m = re.search(r"^([^{\n]+)\{", stripped, re.M)
+        if m:
+            header = m.group(1).strip()
+            for part in header.split(","):
+                part = re.sub(r"^https?://", "", part.strip(), flags=re.I).lower()
+                if part and part not in (":80", ":443") and not part.startswith("127.0.0.1"):
+                    out.append(part)
+        for sn in re.findall(r"^\s*ServerName\s+(\S+)", stripped, re.M):
+            host = sn.strip().lower()
+            if host and host not in ("_", "default"):
+                out.append(host)
 print(",".join(dict.fromkeys(out)))
 PY
 }
@@ -514,7 +615,9 @@ echo "==> Installing LCMP Panel into ${PREFIX} (php ${PHP_VER}, user ${WEB_USER}
 
 MYSQL_SOCKET="$(detect_mysql_socket)"
 MARIADB_CNF="$(detect_mariadb_cnf)"
-CADDY_BIN="$(command -v caddy || echo /usr/bin/caddy)"
+if [[ "${STACK}" == "lcmp" ]]; then
+    CADDY_BIN="$(command -v caddy || echo /usr/bin/caddy)"
+fi
 
 READONLY_DETECTED="$(detect_readonly_vhosts || true)"
 IFS=',' read -ra _ro <<< "${READONLY_DETECTED}"
@@ -694,24 +797,83 @@ caddy_apply() {
     return 0
 }
 
+apache_apply() {
+    local snippet="$1" bak="$2" listen="${3:-}"
+    echo "==> Apache apply (systemctl reload ${WEB_SERVICE})"
+    if [[ "${CADDY_RELOAD}" == "none" ]]; then
+        echo "Apache vhost written and not applied (--caddy-reload=none)."
+        return 0
+    fi
+    if ! systemctl is-active --quiet "${WEB_SERVICE}"; then
+        echo "==> ${WEB_SERVICE} is not active; starting unit"
+        systemctl start "${WEB_SERVICE}"
+        sleep 1
+        if ! systemctl is-active --quiet "${WEB_SERVICE}"; then
+            rollback_panel_snippet "${snippet}" "${bak}"
+            [[ -n "${listen}" && -f "${listen}" ]] && rm -f "${listen}"
+            echo "Could not start ${WEB_SERVICE}." >&2
+            return 1
+        fi
+    fi
+    if command -v a2ensite >/dev/null 2>&1 && [[ -f "${VHOST_AVAILABLE}/lcmp-panel.conf" ]]; then
+        a2ensite lcmp-panel >/dev/null 2>&1 || a2ensite lcmp-panel.conf >/dev/null 2>&1 || true
+    fi
+    if command -v a2enconf >/dev/null 2>&1 && [[ -n "${listen}" && -f "${listen}" ]]; then
+        a2enconf lcmp-panel-listen >/dev/null 2>&1 || true
+    fi
+    if ! "${APACHE_CTL}" -t; then
+        echo "Apache configtest failed; rolling back the panel vhost." >&2
+        rollback_panel_snippet "${snippet}" "${bak}"
+        command -v a2dissite >/dev/null 2>&1 && a2dissite lcmp-panel >/dev/null 2>&1 || true
+        [[ -n "${listen}" && -f "${listen}" ]] && rm -f "${listen}"
+        "${APACHE_CTL}" -t >/dev/null 2>&1 && systemctl reload "${WEB_SERVICE}" >/dev/null 2>&1 || true
+        return 1
+    fi
+    if ! systemctl reload "${WEB_SERVICE}"; then
+        echo "systemctl reload ${WEB_SERVICE} failed; rolling back." >&2
+        rollback_panel_snippet "${snippet}" "${bak}"
+        command -v a2dissite >/dev/null 2>&1 && a2dissite lcmp-panel >/dev/null 2>&1 || true
+        "${APACHE_CTL}" -t >/dev/null 2>&1 && systemctl reload "${WEB_SERVICE}" >/dev/null 2>&1 || true
+        return 1
+    fi
+    local i
+    for i in $(seq 1 25); do
+        if caddy_port_listening "${PANEL_PORT}"; then
+            return 0
+        fi
+        sleep 0.3
+    done
+    echo "Port ${PANEL_PORT} is not listening after Apache reload; rolling back." >&2
+    rollback_panel_snippet "${snippet}" "${bak}"
+    command -v a2dissite >/dev/null 2>&1 && a2dissite lcmp-panel >/dev/null 2>&1 || true
+    "${APACHE_CTL}" -t >/dev/null 2>&1 && systemctl reload "${WEB_SERVICE}" >/dev/null 2>&1 || true
+    return 1
+}
+
 if [[ "${DRY_RUN}" -eq 1 ]]; then
     echo "DRY-RUN — no files, packages, or services will be changed."
     echo "  prefix:        ${PREFIX}"
     echo "  web user:      ${WEB_USER}"
+    echo "  stack:         ${STACK}"
+    echo "  web service:   ${WEB_SERVICE}"
     echo "  php:           ${PHP_VER}"
     echo "  access:        ${ACCESS}"
     echo "  port:          ${PANEL_PORT}"
     echo "  domain/ip:     ${PANEL_DOMAIN:-}${PANEL_IP:-auto-if-interactive}"
-    echo "  caddy reload:  ${CADDY_RELOAD}"
+    echo "  apply:         ${CADDY_RELOAD}"
     echo "  require totp:  ${REQUIRE_TOTP}"
     echo "  firewall:      ${DO_FIREWALL}"
     echo "  fail2ban:      ${DO_FAIL2BAN}"
-    echo "  caddy snippet: ${CADDY_CONFD}/lcmp-panel.conf"
+    echo "  panel vhost:   ${VHOST_DIR}/lcmp-panel.conf"
     echo "  fpm pool:      $(pool_dir 2>/dev/null || echo unknown)/lcmp-panel.conf"
     echo "  sudoers:       /etc/sudoers.d/lcmp-panel"
     echo "  readonly:      ${READONLY_JSON}"
-    echo "  caddy admin:   $(caddy_admin_spec 2>/dev/null || echo unknown)"
-    echo "  caddy active:  $(systemctl is-active caddy 2>/dev/null || echo unknown)"
+    if [[ "${STACK}" == "lcmp" ]]; then
+        echo "  caddy admin:   $(caddy_admin_spec 2>/dev/null || echo unknown)"
+        echo "  caddy active:  $(systemctl is-active caddy 2>/dev/null || echo unknown)"
+    else
+        echo "  apache active: $(systemctl is-active "${WEB_SERVICE}" 2>/dev/null || echo unknown)"
+    fi
     exit 0
 fi
 
@@ -793,11 +955,19 @@ SQL
     #   "observed_services": ["custom-worker", "127.0.0.1:9000"]
     cat > /etc/lcmp-panel/broker.json <<EOF
 {
+    "stack": "${STACK}",
+    "web_server": "${WEB_SERVICE}",
+    "web_service": "${WEB_SERVICE}",
+    "vhost_format": "${VHOST_FORMAT}",
     "paths": {
         "www_root": "${WWW_ROOT}",
         "caddy_confd": "${CADDY_CONFD}",
         "caddyfile": "${CADDYFILE}",
         "caddy_bin": "${CADDY_BIN}",
+        "vhost_dir": "${VHOST_DIR}",
+        "vhost_available": "${VHOST_AVAILABLE}",
+        "web_log_dir": "${WEB_LOG_DIR}",
+        "apache_ctl": "${APACHE_CTL}",
         "audit_log": "/var/log/lcmp-panel/broker-audit.log",
         "mariadb_server_cnf": "${MARIADB_CNF}",
         "artisan": "${PREFIX}/web/artisan",
@@ -826,15 +996,31 @@ else
     LCMP_ARTISAN="${PREFIX}/web/artisan" \
     LCMP_PREFIX="${PREFIX}" \
     LCMP_WEB_USER="${WEB_USER}" \
+    LCMP_STACK="${STACK}" \
+    LCMP_WEB_SERVICE="${WEB_SERVICE}" \
+    LCMP_VHOST_FORMAT="${VHOST_FORMAT}" \
+    LCMP_VHOST_DIR="${VHOST_DIR}" \
+    LCMP_VHOST_AVAILABLE="${VHOST_AVAILABLE}" \
+    LCMP_WEB_LOG_DIR="${WEB_LOG_DIR}" \
+    LCMP_APACHE_CTL="${APACHE_CTL}" \
     python3 - /etc/lcmp-panel/broker.json <<'PY'
 import json, os, pathlib, sys
 path = pathlib.Path(sys.argv[1])
 data = json.loads(path.read_text())
 data["readonly_vhosts"] = json.loads(os.environ["LCMP_READONLY_JSON"])
+data["stack"] = os.environ["LCMP_STACK"]
+data["web_server"] = os.environ["LCMP_WEB_SERVICE"]
+data["web_service"] = os.environ["LCMP_WEB_SERVICE"]
+data["vhost_format"] = os.environ["LCMP_VHOST_FORMAT"]
 data.setdefault("paths", {})["www_root"] = os.environ["LCMP_WWW_ROOT"]
 data["paths"]["caddy_confd"] = os.environ["LCMP_CADDY_CONFD"]
 data["paths"]["artisan"] = os.environ["LCMP_ARTISAN"]
 data["paths"]["panel_root"] = os.environ["LCMP_PREFIX"]
+data["paths"]["vhost_dir"] = os.environ["LCMP_VHOST_DIR"]
+data["paths"]["vhost_available"] = os.environ["LCMP_VHOST_AVAILABLE"]
+data["paths"]["web_log_dir"] = os.environ["LCMP_WEB_LOG_DIR"]
+if os.environ.get("LCMP_APACHE_CTL"):
+    data["paths"]["apache_ctl"] = os.environ["LCMP_APACHE_CTL"]
 data["web_user"] = os.environ["LCMP_WEB_USER"]
 data.setdefault("observed_services", [])
 path.write_text(json.dumps(data, indent=4) + "\n")
@@ -1107,6 +1293,7 @@ if [[ "${INSTALL_CADDY_SNIPPET}" -eq 1 ]]; then
         chown "${WEB_USER}:${WEB_USER}" "${PREFIX}/web/.env"
     fi
 
+    if [[ "${STACK}" == "lcmp" ]]; then
     install -d -m 0755 -o "${WEB_USER}" -g "${WEB_USER}" /var/log/caddy
     touch /var/log/caddy/access_lcmp-panel.log /var/log/caddy/lcmp-panel.log
     chown "${WEB_USER}:${WEB_USER}" /var/log/caddy/access_lcmp-panel.log /var/log/caddy/lcmp-panel.log
@@ -1229,8 +1416,126 @@ PY
     if [[ "${CADDY_RELOAD}" != "none" ]]; then
         rm -f "${BAK}"
     fi
+
+    else
+        # LAMP (Apache): panel vhost + optional TLS (self-signed or certbot).
+        install -d -m 0755 -o "${WEB_USER}" -g "${WEB_USER}" "${WEB_LOG_DIR}"
+        touch "${WEB_LOG_DIR}/lcmp-panel-error.log" "${WEB_LOG_DIR}/lcmp-panel-access.log"
+        chown "${WEB_USER}:${WEB_USER}" "${WEB_LOG_DIR}/lcmp-panel-error.log" "${WEB_LOG_DIR}/lcmp-panel-access.log"
+        chmod 0640 "${WEB_LOG_DIR}/lcmp-panel-error.log" "${WEB_LOG_DIR}/lcmp-panel-access.log"
+
+        TLS_CRT="" TLS_KEY=""
+        if [[ "${ACCESS}" == "public" ]]; then
+            install -d -m 0750 -o root -g "${WEB_USER}" /etc/lcmp-panel/tls
+            if [[ -n "${PANEL_DOMAIN}" ]]; then
+                if command -v apt-get >/dev/null 2>&1; then
+                    export DEBIAN_FRONTEND=noninteractive
+                    apt-get -y install certbot python3-certbot-apache >/dev/null 2>&1 || true
+                elif command -v dnf >/dev/null 2>&1; then
+                    dnf -y install certbot python3-certbot-apache >/dev/null 2>&1 || dnf -y install certbot >/dev/null 2>&1 || true
+                fi
+            fi
+            if [[ -n "${PANEL_DOMAIN}" ]] && command -v certbot >/dev/null 2>&1 && [[ "${PANEL_PORT}" == "443" ]]; then
+                certbot --apache -d "${PANEL_DOMAIN}" --non-interactive --agree-tos \
+                    --email "${LE_EMAIL:-admin@${PANEL_DOMAIN}}" --redirect >/dev/null 2>&1 || true
+                TLS_CRT="/etc/letsencrypt/live/${PANEL_DOMAIN}/fullchain.pem"
+                TLS_KEY="/etc/letsencrypt/live/${PANEL_DOMAIN}/privkey.pem"
+                [[ -f "${TLS_CRT}" ]] || TLS_CRT=""
+            fi
+            if [[ -z "${TLS_CRT}" ]]; then
+                openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
+                    -keyout /etc/lcmp-panel/tls/panel.key \
+                    -out /etc/lcmp-panel/tls/panel.crt \
+                    -subj "/CN=${PANEL_DOMAIN:-${PANEL_IP:-localhost}}" >/dev/null 2>&1
+                chmod 0640 /etc/lcmp-panel/tls/panel.key /etc/lcmp-panel/tls/panel.crt
+                chown root:"${WEB_USER}" /etc/lcmp-panel/tls/panel.key /etc/lcmp-panel/tls/panel.crt
+                TLS_CRT=/etc/lcmp-panel/tls/panel.crt
+                TLS_KEY=/etc/lcmp-panel/tls/panel.key
+            fi
+        fi
+
+        AVAIL="${VHOST_AVAILABLE:-${VHOST_DIR}}"
+        install -d -m 0755 "${AVAIL}" "${VHOST_DIR}"
+        SNIPPET="${AVAIL}/lcmp-panel.conf"
+        LISTEN_CONF=""
+        if [[ -d /etc/apache2/conf-available ]]; then
+            LISTEN_CONF=/etc/apache2/conf-available/lcmp-panel-listen.conf
+        elif [[ -d /etc/httpd/conf.d ]]; then
+            LISTEN_CONF=/etc/httpd/conf.d/lcmp-panel-listen.conf
+        fi
+        BAK=""
+        if [[ -e "${SNIPPET}" ]]; then
+            BAK="${SNIPPET}.lcmp-bak"
+            cp -a "${SNIPPET}" "${BAK}"
+        fi
+        ALLOW_CSV="$(IFS=','; echo "${ALLOW_IPS[*]+"${ALLOW_IPS[*]}"}")"
+        python3 - "${SNIPPET}" "${LISTEN_CONF}" "${PREFIX}" "${PANEL_PORT}" "${ACCESS}" \
+            "${PANEL_DOMAIN}" "${PANEL_IP}" "${TLS_CRT}" "${TLS_KEY}" "${WEB_LOG_DIR}" "${ALLOW_CSV}" <<'PY'
+import pathlib, sys
+snippet, listen, prefix, port, access, domain, ip, crt, key, log_dir, allow_csv = sys.argv[1:12]
+allow = [a.strip() for a in allow_csv.split(",") if a.strip()]
+web = prefix + "/web/public"
+sock = "/run/php/lcmp-panel.sock"
+acl = ""
+if allow:
+    acl = "    <RequireAll>\n        Require ip " + " ".join(allow) + "\n    </RequireAll>\n"
+else:
+    acl = "    Require all granted\n"
+ssl = ""
+if access == "public" and crt and key:
+    ssl = f"""
+<VirtualHost *:{port}>
+    ServerName {domain or ip or "panel"}
+    DocumentRoot {web}
+    SSLEngine on
+    SSLCertificateFile {crt}
+    SSLCertificateKeyFile {key}
+    <Directory {web}>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+{acl}    </Directory>
+    <FilesMatch \\.php$>
+        SetHandler "proxy:unix:{sock}|fcgi://localhost"
+    </FilesMatch>
+    ErrorLog  {log_dir}/lcmp-panel-error.log
+    CustomLog {log_dir}/lcmp-panel-access.log combined
+</VirtualHost>
+"""
+    listen_body = f"Listen 127.0.0.1:{port}\nListen {port} https\n"
+else:
+    listen_body = f"Listen 127.0.0.1:{port}\n"
+http = f"""# LCMP Panel — generated by install.sh
+<VirtualHost 127.0.0.1:{port}>
+    ServerName 127.0.0.1
+    DocumentRoot {web}
+    <Directory {web}>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require local
+    </Directory>
+    <FilesMatch \\.php$>
+        SetHandler "proxy:unix:{sock}|fcgi://localhost"
+    </FilesMatch>
+    ErrorLog  {log_dir}/lcmp-panel-error.log
+    CustomLog {log_dir}/lcmp-panel-access.log combined
+</VirtualHost>
+"""
+pathlib.Path(snippet).write_text(http + ssl)
+if listen:
+    pathlib.Path(listen).write_text(listen_body)
+PY
+        chmod 0644 "${SNIPPET}"
+        [[ -n "${LISTEN_CONF}" && -f "${LISTEN_CONF}" ]] && chmod 0644 "${LISTEN_CONF}"
+        if ! apache_apply "${SNIPPET}" "${BAK}" "${LISTEN_CONF}"; then
+            echo "Apache apply failed after configtest. Existing sites should still be served." >&2
+            exit 1
+        fi
+        if [[ "${CADDY_RELOAD}" != "none" ]]; then
+            rm -f "${BAK}"
+        fi
+    fi
 else
-    echo "Caddy snippet skipped (--skip-caddy)."
+    echo "Web-server snippet skipped (--skip-caddy)."
 fi
 
 # Persist access settings for uninstall (no secrets).
@@ -1240,6 +1545,8 @@ ACCESS_MODE=${ACCESS}
 PANEL_PORT=${PANEL_PORT}
 PANEL_HAS_DOMAIN=$([ -n "${PANEL_DOMAIN}" ] && echo 1 || echo 0)
 PANEL_ALLOW_IPS=${_ALLOW_CSV}
+STACK=${STACK}
+WEB_SERVICE=${WEB_SERVICE}
 EOF
 chmod 0640 /etc/lcmp-panel/access.env
 
@@ -1334,6 +1641,7 @@ echo "  Broker:  ${PREFIX}/broker"
 echo "  Web:     ${PREFIX}/web"
 echo "  Sudoers: /etc/sudoers.d/lcmp-panel"
 echo "  Access:  ${ACCESS}"
+echo "  Stack:   ${STACK} (${WEB_SERVICE})"
 echo "  Port:    ${PANEL_PORT}"
 echo
 echo "SSH tunnel (replace ${PANEL_PORT} if you passed a different --port):"

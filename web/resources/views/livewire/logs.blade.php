@@ -5,7 +5,7 @@
     <form wire:submit="load" class="flex flex-wrap items-end gap-3">
         <label class="text-xs uppercase tracking-wide text-zinc-500">Log
             <select class="field mt-1" wire:model="key">
-                <option value="caddy">Caddy access</option>
+                <option value="caddy">Web server access</option>
                 <option value="mariadb">MariaDB error</option>
                 <option value="php-fpm">PHP-FPM error</option>
                 <option value="php-slow">PHP slowlog</option>

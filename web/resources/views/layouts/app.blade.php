@@ -52,7 +52,7 @@
             <header class="flex items-center justify-between border-b border-white/5 px-4 py-3 md:px-8">
                 <div>
                     <h1 class="text-lg font-medium text-zinc-100">{{ $heading ?? $title ?? 'Overview' }}</h1>
-                    <p class="font-mono text-xs text-zinc-500">{{ $sub ?? 'Linux · Caddy · MariaDB · PHP' }}</p>
+                    <p class="font-mono text-xs text-zinc-500">{{ $sub ?? 'Linux · Caddy or Apache · MariaDB · PHP' }}</p>
                 </div>
             <nav class="flex gap-3 overflow-x-auto px-4 py-2 text-xs md:hidden">
                 <a href="/" class="shrink-0 text-zinc-400">Overview</a>

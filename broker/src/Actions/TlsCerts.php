@@ -3,24 +3,18 @@ declare(strict_types=1);
 
 namespace LcmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\CaddyParser;
 use LcmpPanel\Broker\Config;
 use LcmpPanel\Broker\Runtime;
 use LcmpPanel\Broker\Validator;
+use LcmpPanel\Broker\Web\WebServers;
 
 final class TlsCerts
 {
     public function handle(string $action, array $args, array $input, Runtime $runtime, Config $config): array
     {
-        $files = $runtime->glob(rtrim($config->caddyConfD, '/') . '/*.conf');
         $seen = [];
         $certs = [];
-        foreach ($files as $file) {
-            try {
-                $parsed = CaddyParser::parseFile($file, $runtime->readFile($file), $config->readonlyVhosts);
-            } catch (\Throwable) {
-                continue;
-            }
+        foreach (WebServers::for($config)->listVhosts($runtime, $config) as $parsed) {
             if (!($parsed['tls'] ?? false)) {
                 continue;
             }

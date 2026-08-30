@@ -64,10 +64,12 @@ class Dashboard extends Component
     public function restartAll(BrokerClient $broker): void
     {
         $errors = [];
-        foreach (['caddy', 'mariadb'] as $unit) {
-            $res = $broker->call('service.restart', [$unit]);
-            if (! $res->ok) {
-                $errors[] = $unit.":\n".($res->error ?: 'restart failed');
+        foreach (array_column($this->status['controlled'] ?? [], 'unit') as $unit) {
+            if (in_array($unit, ['caddy', 'apache2', 'httpd', 'mariadb'], true)) {
+                $res = $broker->call('service.restart', [$unit]);
+                if (! $res->ok) {
+                    $errors[] = $unit.":\n".($res->error ?: 'restart failed');
+                }
             }
         }
         $php = $this->versions['php']['installed'] ?? [];

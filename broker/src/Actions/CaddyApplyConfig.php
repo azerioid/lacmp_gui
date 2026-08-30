@@ -4,9 +4,9 @@ declare(strict_types=1);
 namespace LcmpPanel\Broker\Actions;
 
 use LcmpPanel\Broker\BrokerException;
-use LcmpPanel\Broker\CaddyApply;
 use LcmpPanel\Broker\Config;
 use LcmpPanel\Broker\Runtime;
+use LcmpPanel\Broker\Web\WebServers;
 
 final class CaddyApplyConfig
 {
@@ -22,6 +22,6 @@ final class CaddyApplyConfig
             $expect[] = (int) $p;
         }
 
-        return CaddyApply::run($runtime, $config, $mode, $expect);
+        return WebServers::for($config)->reload($runtime, $config, $mode, $expect);
     }
 }

@@ -9,6 +9,7 @@ use LcmpPanel\Broker\Config;
 use LcmpPanel\Broker\Runtime;
 use LcmpPanel\Broker\SpacesClient;
 use LcmpPanel\Broker\Validator;
+use LcmpPanel\Broker\Web\WebServers;
 
 final class BackupRun
 {
@@ -119,7 +120,7 @@ final class BackupRun
     {
         $out = rtrim($config->stagingDir, '/') . '/caddy.tgz';
         $runtime->mkdir($config->stagingDir, 0750);
-        $cmd = ['/usr/bin/tar', '-czf', $out, $config->caddyfile, $config->caddyConfD];
+        $cmd = array_merge(['/usr/bin/tar', '-czf', $out], WebServers::for($config)->backupPaths($config));
         if ($includeFpm) {
             $cmd[] = '/etc/php';
         }

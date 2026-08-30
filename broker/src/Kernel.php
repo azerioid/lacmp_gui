@@ -57,6 +57,7 @@ final class Kernel
         'vhost.add' => VhostAdd::class,
         'vhost.del' => VhostDel::class,
         'caddy.apply' => CaddyApplyConfig::class,
+        'web.reload' => CaddyApplyConfig::class,
         'db.list' => DbList::class,
         'db.add' => DbAdd::class,
         'db.del' => DbDel::class,

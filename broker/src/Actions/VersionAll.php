@@ -10,23 +10,13 @@ final class VersionAll
 {
     public function handle(string $action, array $args, array $input, Runtime $runtime, Config $config): array
     {
+        $web = \LcmpPanel\Broker\Web\WebServers::for($config)->version($runtime, $config);
         return [
-            'caddy' => self::caddy($runtime, $config),
+            'web' => $web,
+            'caddy' => ['version' => $web['version'], 'raw' => $web['raw']],
             'mariadb' => self::mariadb($runtime),
             'php' => self::php($runtime),
         ];
-    }
-
-    private static function caddy(Runtime $runtime, Config $config): array
-    {
-        $bin = $runtime->fileExists($config->caddyBin) ? $config->caddyBin : '/usr/bin/caddy';
-        $r = $runtime->exec([$bin, 'version']);
-        $line = trim(explode("\n", $r->stdout)[0] ?? '');
-        $version = $line;
-        if (preg_match('/v?(\d+\.\d+\.\d+\S*)/', $line, $m)) {
-            $version = $m[1];
-        }
-        return ['version' => $version, 'raw' => $line];
     }
 
     private static function mariadb(Runtime $runtime): array

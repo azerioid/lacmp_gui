@@ -53,7 +53,7 @@
         <div class="panel p-5">
             <div class="text-xs uppercase tracking-wide text-zinc-500">Stack versions</div>
             <dl class="mt-2 space-y-1 font-mono text-sm">
-                <div class="flex justify-between"><dt class="text-zinc-500">Caddy</dt><dd>{{ $versions['caddy']['version'] ?? '—' }}</dd></div>
+                <div class="flex justify-between"><dt class="text-zinc-500">{{ $versions['web']['label'] ?? 'Caddy' }}</dt><dd>{{ $versions['web']['version'] ?? $versions['caddy']['version'] ?? '—' }}</dd></div>
                 <div class="flex justify-between"><dt class="text-zinc-500">MariaDB</dt><dd>{{ $versions['mariadb']['version'] ?? '—' }}</dd></div>
                 <div class="flex justify-between"><dt class="text-zinc-500">PHP</dt><dd>{{ $versions['php']['version'] ?? '—' }}</dd></div>
             </dl>
@@ -111,5 +111,5 @@
         </div>
     </section>
 
-    <button type="button" class="btn-ghost" wire:click="restartAll" wire:confirm="Restart Caddy, MariaDB, and every PHP-FPM pool?">Restart LCMP stack</button>
+    <button type="button" class="btn-ghost" wire:click="restartAll" wire:confirm="Restart the web server, MariaDB, and every PHP-FPM pool?">Restart stack</button>
 </div>
