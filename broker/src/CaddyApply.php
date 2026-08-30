@@ -48,10 +48,10 @@ final class CaddyApply
 
         self::ensureActive($runtime);
 
-        // Newly enabled admin is not in the running process until a restart.
-        if ($adminEnabled && $mode === 'api') {
-            fwrite(STDERR, "==> Admin was off; one restart to bind " . self::IPV4_ADMIN . " (later applies use the API)\n");
+        if ($adminEnabled) {
+            fwrite(STDERR, "==> Admin was off; one restart to bind " . self::IPV4_ADMIN . " (later applies use graceful API reload)\n");
             $path = self::tryRestart($runtime, true);
+            self::waitForAdmin($runtime, $address);
         } else {
             $path = match ($mode) {
                 'api' => self::tryApi($runtime, $config, $address, true),
@@ -98,6 +98,24 @@ final class CaddyApply
         }
         $spec = preg_replace('#^https?://#', '', $spec) ?? $spec;
         return str_replace('localhost', '127.0.0.1', $spec);
+    }
+
+    private static function waitForAdmin(Runtime $runtime, string $address): void
+    {
+        if (str_starts_with($address, 'unix/') || str_starts_with($address, 'unix://')) {
+            return;
+        }
+        $url = 'http://' . $address . '/config/';
+        $curl = $runtime->fileExists('/usr/bin/curl') ? '/usr/bin/curl' : 'curl';
+        for ($i = 0; $i < 20; $i++) {
+            $probe = $runtime->exec([$curl, '-fsS', '--max-time', '2', $url], null, 5);
+            if ($probe->ok()) {
+                fwrite(STDERR, "==> Caddy admin is reachable at {$address}\n");
+                return;
+            }
+            usleep(150000);
+        }
+        fwrite(STDERR, "==> Warning: admin {$address} not yet reachable after restart; later applies will use the API\n");
     }
 
     private static function ensureIpv4Admin(Runtime $runtime, Config $config): bool

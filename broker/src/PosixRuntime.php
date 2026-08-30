@@ -42,7 +42,7 @@ final class PosixRuntime implements Runtime
             2 => ['pipe', 'w'],
         ];
 
-        $proc = @proc_open($command, $descriptors, $pipes, null, null, [
+        $proc = @proc_open($command, $descriptors, $pipes, null, self::childEnv(), [
             'bypass_shell' => true,
         ]);
         if (!is_resource($proc)) {
@@ -85,6 +85,25 @@ final class PosixRuntime implements Runtime
         $exit = proc_close($proc);
 
         return new ExecResult($command, (int) ($status['exitcode'] ?? $exit), $stdout, $stderr);
+    }
+
+    /**
+     * systemd-run starts the broker with an empty environment. Caddy (and
+     * similar tools) need HOME/XDG so they do not write state into cwd.
+     *
+     * @return array<string,string>
+     */
+    private static function childEnv(): array
+    {
+        $home = '/var/lib/caddy';
+        $path = getenv('PATH') ?: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
+        return [
+            'HOME' => $home,
+            'XDG_CONFIG_HOME' => $home . '/.config',
+            'XDG_DATA_HOME' => $home . '/.local/share',
+            'PATH' => $path,
+            'LC_ALL' => 'C',
+        ];
     }
 
     public function readFile(string $path): string

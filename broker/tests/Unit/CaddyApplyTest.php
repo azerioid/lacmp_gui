@@ -43,6 +43,27 @@ final class CaddyApplyTest extends TestCase
         $this->assertSame([], $restarts);
     }
 
+    public function test_enabling_admin_restarts_once_without_api_first(): void
+    {
+        $rt = new FakeRuntime();
+        $rt->files['/etc/caddy/Caddyfile'] = "{\n    admin off\n}\nimport /etc/caddy/conf.d/*.conf\n";
+        $rt->script(['/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'], 0, 'Valid configuration');
+        $rt->script(['/usr/bin/caddy', 'reload', '--config', '/etc/caddy/Caddyfile', '--address', '127.0.0.1:2019', '--force'], 1, '', 'must not be called');
+        $rt->script(['/usr/bin/systemctl', 'restart', 'caddy'], 0);
+
+        $kernel = new Kernel(new Config(), $rt);
+        ob_start();
+        $code = $kernel->run(['broker', 'caddy.apply'], ['mode' => 'auto', 'expect_ports' => []]);
+        $out = ob_get_clean();
+
+        $this->assertSame(0, $code, $out);
+        $decoded = json_decode($out, true);
+        $this->assertSame('restart', $decoded['data']['path']);
+        $this->assertTrue($decoded['data']['admin_enabled']);
+        $api = array_filter($rt->execLog, fn ($e) => ($e['command'][0] ?? '') === '/usr/bin/caddy' && ($e['command'][1] ?? '') === 'reload');
+        $this->assertSame([], $api);
+    }
+
     public function test_port_health_failure_is_specific(): void
     {
         $rt = new FakeRuntime();

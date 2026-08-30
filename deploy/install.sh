@@ -1677,22 +1677,45 @@ fi
 
 echo
 echo "Installed."
-echo "  Broker:  ${PREFIX}/broker"
-echo "  Web:     ${PREFIX}/web"
-echo "  Sudoers: /etc/sudoers.d/lcmp-panel"
-echo "  Access:  ${ACCESS}"
-echo "  Stack:   ${STACK} (${WEB_SERVICE})"
-echo "  Port:    ${PANEL_PORT}"
+echo "  Broker:    ${PREFIX}/broker"
+echo "  Web:       ${PREFIX}/web"
+echo "  Sudoers:   /etc/sudoers.d/lcmp-panel"
+echo "  Access:    ${ACCESS}"
+echo "  Stack:     ${STACK} (${WEB_SERVICE})"
+echo "  Port:      ${PANEL_PORT}"
+if [[ "${REQUIRE_TOTP}" == "true" ]]; then
+    echo "  TOTP:      required for admin login."
+else
+    echo "  TOTP:      disabled (admins log in with password only)."
+    if [[ "${ACCESS}" == "public" ]]; then
+        echo "  Warning:   this panel is internet-facing without TOTP; prefer --require-totp=true"
+    fi
+fi
+if [[ "${DO_FAIL2BAN}" == "true" ]]; then
+    echo "  fail2ban:  on (jail lcmp-panel)"
+else
+    echo "  fail2ban:  off"
+fi
+if [[ "${DO_FIREWALL}" == "true" ]]; then
+    echo "  firewall:  on (TCP ${PANEL_PORT})"
+else
+    echo "  firewall:  off"
+fi
+if [[ ${#ALLOW_IPS[@]} -eq 0 ]]; then
+    echo "  allowlist: none (global)"
+else
+    echo "  allowlist: $(IFS=','; echo "${ALLOW_IPS[*]}")"
+fi
 echo
 echo "SSH tunnel (replace ${PANEL_PORT} if you passed a different --port):"
 echo "  ssh -L ${PANEL_PORT}:127.0.0.1:${PANEL_PORT} <this-host>"
 echo "  then http://127.0.0.1:${PANEL_PORT}"
 if [[ "${ACCESS}" == "public" ]]; then
     echo
-    echo "Public HTTPS is enabled (self-signed warning in IP mode; trusted cert in domain mode)."
-    echo "TOTP is mandatory. fail2ban jail: lcmp-panel"
-    if [[ ${#ALLOW_IPS[@]} -eq 0 ]]; then
-        echo "No IP allowlist (global). Lock later with --allow-ip=YOUR.CIDR --access=public --port=${PANEL_PORT}"
+    if [[ -n "${PANEL_DOMAIN}" ]]; then
+        echo "Public HTTPS: https://${PANEL_DOMAIN}:${PANEL_PORT} (trusted cert if issuance succeeded)."
+    else
+        echo "Public HTTPS: https://${PANEL_IP:-<ip>}:${PANEL_PORT} (self-signed; browser warning expected)."
     fi
 else
     echo "The localhost vhost is 127.0.0.1 only. Use --access=public for HTTPS on a network port."

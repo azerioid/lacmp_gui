@@ -38,16 +38,22 @@ final class VhostAddRollbackTest extends TestCase
         $this->assertStringContainsString('root * /data/www/shop.example.com', $conf);
         $this->assertTrue($this->rt->isDir('/data/www/shop.example.com'));
         $decoded = json_decode($out, true);
-        $this->assertSame('api', $decoded['data']['apply']['path']);
+        $this->assertSame('restart', $decoded['data']['apply']['path']);
+        $this->assertTrue($decoded['data']['apply']['admin_enabled']);
         $this->assertSame('127.0.0.1:2019', $decoded['data']['apply']['address']);
         $this->assertStringContainsString('admin 127.0.0.1:2019', $this->rt->files['/etc/caddy/Caddyfile']);
-        $usedIpv4Reload = false;
+        $apiReloads = 0;
+        $restarts = 0;
         foreach ($this->rt->execLog as $e) {
-            if (($e['command'][1] ?? '') === 'reload' && in_array('127.0.0.1:2019', $e['command'], true)) {
-                $usedIpv4Reload = true;
+            if (($e['command'][0] ?? '') === '/usr/bin/caddy' && ($e['command'][1] ?? '') === 'reload') {
+                $apiReloads++;
+            }
+            if (($e['command'][1] ?? '') === 'restart') {
+                $restarts++;
             }
         }
-        $this->assertTrue($usedIpv4Reload);
+        $this->assertSame(0, $apiReloads);
+        $this->assertSame(1, $restarts);
     }
 
     public function test_reload_failure_falls_back_to_caddy_restart(): void
@@ -94,7 +100,7 @@ final class VhostAddRollbackTest extends TestCase
         $this->assertNotSame(0, $code);
         $this->assertArrayNotHasKey('/etc/caddy/conf.d/oops.example.com.conf', $this->rt->files);
         $this->assertArrayHasKey('/etc/caddy/conf.d/projob.az.conf', $this->rt->files);
-        $this->assertStringContainsString('All Caddy apply methods failed', $out);
+        $this->assertStringContainsString('systemctl restart caddy failed', $out);
     }
 
     public function test_refuses_to_delete_projob(): void

@@ -27,7 +27,10 @@ if [[ -z "${LCMP_BROKER_UNSANDBOXED:-}" ]] \
         -E LCMP_BROKER_UNSANDBOXED=1 \
         -E LCMP_BROKER_PHP="${PHP_BIN}" \
         -E LCMP_PANEL_CONFIG="${LCMP_PANEL_CONFIG:-/etc/lcmp-panel/broker.json}" \
-        -E PATH="${PATH}" \
+        -E PATH="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}" \
+        -E HOME=/var/lib/caddy \
+        -E XDG_CONFIG_HOME=/var/lib/caddy/.config \
+        -E XDG_DATA_HOME=/var/lib/caddy/.local/share \
         -- "${SELF}" "$@"
 fi
 
