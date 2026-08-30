@@ -461,10 +461,12 @@ rsync -a --delete \
     --exclude 'vendor/' \
     --exclude 'node_modules/' \
     --exclude 'tests/' \
-    --exclude 'storage/logs/*' \
-    --exclude 'storage/framework/cache/data/*' \
-    --exclude 'storage/framework/sessions/*' \
-    --exclude 'storage/framework/views/*' \
+    --exclude 'bootstrap/cache/*.php' \
+    --exclude 'storage/logs/' \
+    --exclude 'storage/framework/cache/' \
+    --exclude 'storage/framework/sessions/' \
+    --exclude 'storage/framework/views/' \
+    --exclude 'storage/framework/tmp/' \
     --exclude '.phpunit.cache/' \
     "${ROOT}/web/" "${PREFIX}/web/"
 
@@ -549,7 +551,6 @@ fi
 if [[ "${NEED_COMPOSER}" -eq 1 ]]; then
     echo "==> composer install --no-dev --optimize-autoloader"
     run_as_web "${PHP_BIN} ${COMPOSER_BIN} install --no-dev --optimize-autoloader --no-interaction --no-scripts"
-    run_as_web "${PHP_BIN} artisan package:discover --ansi --no-interaction"
     if [[ -n "${LOCK_NOW}" ]]; then
         printf '%s\n' "${LOCK_NOW}" > "${LOCK_HASH_FILE}"
         chmod 0640 "${LOCK_HASH_FILE}"
@@ -558,6 +559,9 @@ if [[ "${NEED_COMPOSER}" -eq 1 ]]; then
 else
     echo "==> vendor/ matches composer.lock — skipping composer install"
 fi
+# Always rediscover packages so a Mac --dev cache (Pail, etc.) cannot leak into production.
+rm -f "${PREFIX}/web/bootstrap/cache/packages.php" "${PREFIX}/web/bootstrap/cache/services.php"
+run_as_web "${PHP_BIN} artisan package:discover --ansi --no-interaction"
 run_as_web "${PHP_BIN} ${COMPOSER_BIN} dump-autoload -o --no-interaction --no-scripts"
 rm -rf "${COMPOSER_HOME}"
 
