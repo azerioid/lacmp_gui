@@ -100,12 +100,25 @@ LAMP_BIN="$(command -v lamp 2>/dev/null || true)"
 [[ -n "${LCMP_BIN}" && -x "${LCMP_BIN}" ]] && HAS_LCMP=1
 [[ -n "${LAMP_BIN}" && -x "${LAMP_BIN}" ]] && HAS_LAMP=1
 
-STACK_ARG=""
+STACK_ARG="auto"
+_prev=""
 for arg in "$@"; do
     case "$arg" in
         --stack=*) STACK_ARG="${arg#--stack=}" ;;
+        --stack) : ;;
+        *)
+            if [[ "${_prev}" == "--stack" ]]; then
+                STACK_ARG="${arg}"
+            fi
+            ;;
     esac
+    _prev="${arg}"
 done
+STACK_ARG="$(echo "${STACK_ARG}" | tr '[:upper:]' '[:lower:]')"
+case "${STACK_ARG}" in
+    auto|lcmp|lamp|"") STACK_ARG="${STACK_ARG:-auto}" ;;
+    *) die "Invalid --stack=${STACK_ARG} (use auto|lcmp|lamp)." ;;
+esac
 
 if [[ "${HAS_LCMP}" -eq 0 && "${HAS_LAMP}" -eq 0 ]]; then
     die "Neither LCMP nor LAMP is installed (no 'lcmp' or 'lamp' command).
@@ -148,8 +161,14 @@ if [[ ${#missing[@]} -gt 0 ]]; then
     die "Stack command found, but these components are missing: ${missing[*]}.
   Re-run ./lcmp.sh or ./lamp.sh and make sure the web server, MariaDB and PHP are installed."
 fi
+if [[ "${STACK_ARG}" == "lcmp" && "${HAS_LCMP}" -eq 0 ]]; then
+    die "--stack=lcmp was set, but the 'lcmp' command was not found. Install teddysun/lcmp first."
+fi
+if [[ "${STACK_ARG}" == "lamp" && "${HAS_LAMP}" -eq 0 ]]; then
+    die "--stack=lamp was set, but the 'lamp' command was not found. Install teddysun/lamp first."
+fi
 if [[ "${HAS_LCMP}" -eq 1 && "${HAS_LAMP}" -eq 1 ]]; then
-    ok "Both LCMP and LAMP commands are present; the installer will pick the web server bound to :80/:443 (or --stack=)."
+    ok "Both LCMP and LAMP commands are present; default --stack=auto uses the web server on :80/:443."
 elif [[ "${HAS_LCMP}" -eq 1 ]]; then
     ok "LCMP (Caddy) is installed."
 else

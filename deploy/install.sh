@@ -76,6 +76,14 @@ detect_stack() {
             exit 1
         fi
     fi
+    if [[ "${STACK}" == "lcmp" && "${has_lcmp}" -eq 0 ]]; then
+        echo "--stack=lcmp requires the 'lcmp' command (teddysun/lcmp)." >&2
+        exit 1
+    fi
+    if [[ "${STACK}" == "lamp" && "${has_lamp}" -eq 0 ]]; then
+        echo "--stack=lamp requires the 'lamp' command (teddysun/lamp)." >&2
+        exit 1
+    fi
     if [[ "${STACK}" == "lcmp" ]]; then
         WEB_SERVICE=caddy
         VHOST_DIR="${CADDY_CONFD}"
@@ -234,22 +242,22 @@ usage() {
 Usage: lcmp_gui.sh [options]
        deploy/install.sh [options]
 
-Access (default: tunnel — localhost 127.0.0.1:3169 + SSH; override with --port):
+Access (default: tunnel — localhost 127.0.0.1:3169 + SSH; public HTTPS is optional):
   --access=tunnel|public
-  --domain=<fqdn>              public domain mode (Let's Encrypt)
-  --ip=<addr>                  public IP mode (tls internal). Blank in
+  --domain=<fqdn>              public domain mode (Let's Encrypt / certbot)
+  --ip=<addr>                  public IP mode (self-signed). Blank in
                                interactive mode = auto-detect.
   --port=<n>                   panel listen port (default: 3169; not 80/443)
-  --allow-ip=<cidr[,cidr...]>  Caddy + firewall allowlist (repeatable)
-  --email=<addr>  --le-email=  Let's Encrypt account email (domain mode)
+  --allow-ip=<cidr[,cidr...]>  panel + firewall allowlist (repeatable)
+  --email=<addr>  --le-email=  ACME email (domain mode)
 
-Caddy apply (default: auto; same ladder as the broker / UI vhost add):
+Web-server apply (default: auto):
   --caddy-reload=auto|api|systemctl|restart|none
-      auto       API at 127.0.0.1:2019, else systemctl reload, else restart
-      api        admin API only (explicit IPv4; never localhost)
-      systemctl  systemctl reload caddy (drop-in uses --address 127.0.0.1:2019)
-      restart    systemctl restart caddy (brief connection drop)
-      none       write + validate snippet; print the apply command; do not apply
+      auto       Caddy: admin API then systemctl; Apache: graceful reload
+      api        Caddy admin API only (ignored on Apache)
+      systemctl  systemctl reload of the detected web server
+      restart    systemctl restart (brief connection drop)
+      none       write + validate; print the apply command; do not apply
 
 Security:
   --require-totp=true|false    default true (always true-recommended in public)
@@ -267,7 +275,7 @@ Layout:
 Operational:
   --non-interactive            no prompts; missing required values fail
   --dry-run                    print planned actions; change nothing
-  --skip-caddy                 do not write Caddy snippets
+  --skip-caddy                 do not write the panel Caddy/Apache vhost
   --reset-db                   rotate panel DB users (destructive)
   --install-caddy-snippet      compatibility (now the default)
 
@@ -339,8 +347,9 @@ if [[ -z "${ACCESS}" ]]; then
         ACCESS=tunnel
     elif [[ -t 0 && -t 1 ]]; then
         echo "LCMP Panel installer"
-        echo "  tunnel  — localhost ${PANEL_PORT} + SSH tunnel (default, safest)"
-        echo "  public  — HTTPS on a port (domain = Let's Encrypt, or IP = self-signed)"
+        echo "  stack   — auto-detect teddysun LCMP (Caddy) or LAMP (Apache); override with --stack="
+        echo "  tunnel  — localhost ${PANEL_PORT} + SSH tunnel (default; public HTTPS is optional)"
+        echo "  public  — HTTPS on a port (domain = trusted cert, or IP = self-signed)"
         read -r -p "Access mode [tunnel/public] (default: tunnel): " ACCESS
         ACCESS="${ACCESS:-tunnel}"
         if [[ "${ACCESS}" == "public" ]]; then

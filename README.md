@@ -1,66 +1,87 @@
 # LCMP Panel
 
 A web control plane for [teddysun/lcmp](https://github.com/teddysun/lcmp)
-(Linux + Caddy + MariaDB + PHP). The `lcmp` CLI stays the source of truth;
-this panel is a scoped, authenticated UI in front of it.
+(Linux + **Caddy** + MariaDB + PHP) and [teddysun/lamp](https://github.com/teddysun/lamp)
+(Linux + **Apache** + MariaDB + PHP). The `lcmp` / `lamp` CLI stays the source of
+truth; this panel is a scoped, authenticated UI in front of it.
 
 The panel is **control-plane infrastructure**, not a user site. It installs
-under `/usr/local/lib/lcmp-panel/` (never the LCMP www root).
+under `/usr/local/lib/lcmp-panel/` (never the www root). Caddy and Apache cannot
+share `:80`/`:443` — install **one** stack per host.
 
 ## Prerequisites
 
 - A supported OS: Ubuntu 22.04/24.04, Debian 11–13, or EL 8/9/10
-- **LCMP already installed** (`lcmp` on PATH). This installer will not install,
-  stop, or reconfigure LCMP, Caddy vhosts, MariaDB data, Redis, or your sites.
+- **LCMP or LAMP already installed** (`lcmp` or `lamp` on PATH, plus MariaDB,
+  PHP-FPM, and Caddy *or* Apache). This installer will not install, stop, or
+  reconfigure the stack, existing vhosts, MariaDB data, Redis, or your sites.
 
-## Install
+If neither command is present, `./lcmp_gui.sh` exits and prints both clone
+options (`teddysun/lcmp` and `teddysun/lamp`).
+
+## Default install (optional extras)
 
 ```bash
-# as root, on the LCMP host
+# as root, on the LCMP or LAMP host
 git clone https://github.com/azerioid/lcmp_gui.git
 cd lcmp_gui
 chmod +x lcmp_gui.sh
 ./lcmp_gui.sh
 ```
 
-With no flags, a TTY prompts for access mode (default **tunnel**) and listen
-port (default **3169**). Non-interactive runs default to tunnel on 3169.
-Override with `--port=NNNN`.
+With **no flags**:
 
-`lcmp_gui.sh` is a thin preflight (OS gate, LCMP present, php-cli + composer).
+- Preflight checks for **`lcmp` or `lamp`** (and Caddy or Apache, MariaDB, PHP-FPM)
+- Stack is **`--stack=auto`**: prefer the web server bound to `:80`/`:443`
+- Access is **tunnel** — `127.0.0.1:3169` only (SSH `-L`). Public HTTPS is
+  **optional** (`--access=public`)
+- On a TTY you can confirm tunnel vs public; Enter keeps the defaults
+- Non-interactive (`--non-interactive` or no TTY) is tunnel on **3169**
+
+Override the port with `--port=NNNN`. Force a stack with `--stack=lcmp` or
+`--stack=lamp`.
+
+`lcmp_gui.sh` is a thin preflight (OS gate, stack present, php-cli + composer).
 All install logic is in `deploy/install.sh`.
 
 ### Access modes
 
 | Mode | How you reach it | TLS | When to use |
 | --- | --- | --- | --- |
-| **tunnel** (default) | `ssh -L 3169:127.0.0.1:3169 user@host` then `http://127.0.0.1:3169` (replace `3169` if you passed `--port`) | localhost HTTP only | Safest. No public listener. |
-| **public + domain** | `https://panel.example.com:PORT` | Let's Encrypt | Recommended if you have a DNS name. |
-| **public + IP** | `https://<ip>:PORT` | Caddy `tls internal` (self-signed) | No DNS. Browser shows an untrusted-cert warning. Traffic is still encrypted. |
+| **tunnel** (default) | `ssh -L 3169:127.0.0.1:3169 user@host` then `http://127.0.0.1:3169` | localhost HTTP only | Safest. No public listener. |
+| **public + domain** (optional) | `https://panel.example.com:PORT` | LCMP: Caddy ACME. LAMP: certbot on 443, else self-signed | DNS A record required. |
+| **public + IP** (optional) | `https://<ip>:PORT` | LCMP: Caddy `tls internal`. LAMP: openssl self-signed | Browser shows an untrusted-cert warning. Traffic is still encrypted. |
 
 Public mode **never** serves the panel over plaintext HTTP on a public interface.
 By default it also enables **TOTP**, a **fail2ban** jail, and a firewall rule
 (`--require-totp` / `--fail2ban` / `--firewall` can turn those off).
 
 ```bash
-# Tunnel only (explicit; default port 3169)
-./lcmp_gui.sh --access=tunnel
+# Default: detect lcmp vs lamp, tunnel on 3169
+./lcmp_gui.sh
+
+# Explicit tunnel
+./lcmp_gui.sh --access=tunnel --stack=auto
+
+# Force Apache (LAMP) or Caddy (LCMP)
+./lcmp_gui.sh --stack=lamp
+./lcmp_gui.sh --stack=lcmp
 
 # Custom port
 ./lcmp_gui.sh --port=4444
 
-# Public IP mode (self-signed HTTPS)
+# Optional public IP mode (self-signed HTTPS)
 ./lcmp_gui.sh --access=public --port=3169 --ip=203.0.113.10
 
-# Non-interactive (automation — must pass --domain= or --ip= in public mode)
+# Optional public domain mode (trusted cert)
+./lcmp_gui.sh --access=public --domain=panel.example.com --port=3169 --le-email=you@example.com
+
+# Non-interactive public (must pass --domain= or --ip=)
 ./lcmp_gui.sh --non-interactive --access=public --ip=203.0.113.10 --port=3169 --enable-ufw
 
-# Caddy apply: auto (default) probes the admin API, then systemctl reload, then restart
+# Apply: auto (default). none = write+validate only
 ./lcmp_gui.sh --caddy-reload=auto
-./lcmp_gui.sh --caddy-reload=none   # write+validate only; print the apply commands
-
-# Public domain mode (Let's Encrypt)
-./lcmp_gui.sh --access=public --domain=panel.example.com --port=3169 --le-email=you@example.com
+./lcmp_gui.sh --caddy-reload=none
 ```
 
 `./lcmp_gui.sh --help` lists every flag and default.
@@ -68,13 +89,16 @@ By default it also enables **TOTP**, a **fail2ban** jail, and a firewall rule
 If ufw is installed but inactive, pass `--enable-ufw` so the installer can
 enable it **after** allowing SSH/22.
 
-The SSH-tunnel path on `127.0.0.1:<port>` (default 3169) stays available even after public mode. Replace 3169 with your `--port` if you changed it.
+The SSH-tunnel path on `127.0.0.1:<port>` (default 3169) stays available after
+public mode on **Caddy**. On **Apache**, public mode binds HTTPS on that port
+only (Apache cannot mix HTTP and HTTPS on the same port).
 
 | Flag | Meaning |
 | --- | --- |
-| `--access=tunnel\|public` | Access mode (default: tunnel) |
+| `--stack=auto\|lcmp\|lamp` | Detect or force the stack (default: **auto**) |
+| `--access=tunnel\|public` | Access mode (default: **tunnel**; public is optional) |
 | `--domain=` / `--ip=` | Public HTTPS identity |
-| `--port=` | Panel listen port (default 3169; not 80/443). Used for the SSH tunnel bind and for public HTTPS. |
+| `--port=` | Panel listen port (default 3169; not 80/443) |
 | `--allow-ip=` | Comma-list or repeatable CIDR allowlist |
 | `--email=` / `--le-email=` | ACME email (domain mode) |
 | `--caddy-reload=` | `auto` (default), `api`, `systemctl`, `restart`, `none` |
@@ -85,7 +109,7 @@ The SSH-tunnel path on `127.0.0.1:<port>` (default 3169) stays available even af
 | `--non-interactive` | no prompts; public requires `--domain` or `--ip` |
 | `--dry-run` | print the plan; change nothing |
 | `--reset-db` | Rotate panel DB users (destructive) |
-| `--skip-caddy` | Do not write Caddy snippets |
+| `--skip-caddy` | Do not write the panel Caddy/Apache vhost |
 | `--enable-ufw` | Enable inactive ufw, keeping SSH |
 | `--readonly-vhost=` | Extra read-only vhost name |
 
@@ -105,13 +129,13 @@ Uninstall:
 ./deploy/uninstall.sh --drop-db  # also drops lcmp_panel users/schema
 ```
 
-Uninstall removes the panel prefix, FPM pool, sudoers, Caddy snippet, cron,
-fail2ban jail, and the panel firewall rule. It never deletes vhosts or
-databases created through the panel.
+Uninstall removes the panel prefix, FPM pool, sudoers, panel Caddy snippet or
+Apache vhost (`a2dissite`), cron, fail2ban jail, and the panel firewall rule.
+It never deletes vhosts or databases created through the panel.
 
 ## Privilege separation
 
-1. **Web app** — PHP-FPM pool `lcmp-panel`, user `caddy` or `www-data`.
+1. **Web app** — PHP-FPM pool `lcmp-panel`, user `caddy`, `www-data`, or `apache`.
 2. **Broker** — `/usr/local/lib/lcmp-panel/broker`, `root:root` mode `0750`.
    Enumerated actions, argv arrays (no shell). Secrets on stdin JSON.
 
@@ -139,11 +163,12 @@ systemd drop-in so FPM can write panel storage under `/usr/local/lib`.
 
 ## Isolation from existing sites
 
-- The installer does not edit other files in `/etc/caddy/conf.d/`.
-- Any Caddy vhost that `reverse_proxy`s a local backend is marked **read-only**
+- The installer does not edit other files in `/etc/caddy/conf.d/` or Apache
+  `sites-available` / `conf.d/vhost`.
+- Reverse-proxy vhosts (`reverse_proxy` or `ProxyPass`) are marked **read-only**
   (detected at install). Add more with `--readonly-vhost=`.
-- Caddy changes always `caddy validate` then `caddy reload --force` as the
-  Caddy user (not a systemd reload). Validate failure rolls the snippet back.
+- Config changes always **validate then reload**. Failure rolls the panel vhost
+  back; other sites keep serving.
 - Dedicated FPM pool and MariaDB database.
 
 ## Local development (Mac / Herd)
@@ -169,17 +194,24 @@ cd web
 
 ## Troubleshooting
 
+- **Neither lcmp nor lamp:** install [teddysun/lcmp](https://github.com/teddysun/lcmp)
+  or [teddysun/lamp](https://github.com/teddysun/lamp) first, then re-run
+  `./lcmp_gui.sh`.
+- **Both commands present:** `--stack=auto` uses whoever is on `:80`/`:443`, or
+  pass `--stack=lcmp` / `--stack=lamp`.
 - **Caddy admin API connection refused (`dial tcp [::1]:2019`):** the installer
-  now probes `127.0.0.1` first and falls back to `systemctl reload` then
-  `systemctl restart`. Re-run the installer; check the log line
-  `Caddy apply strategy` / `Applying via`.
+  probes `127.0.0.1` first and falls back to `systemctl reload` then
+  `systemctl restart`. Re-run the installer; check `Caddy apply strategy`.
+- **Apache not listening after public install:** public mode uses HTTPS-only
+  `Listen PORT https` (do not mix HTTP and HTTPS on the same port). Re-run the
+  installer.
 - **HTTP 500 on first request:** FPM could not write under `/usr/local/lib`
-  (`ProtectSystem=full`). Re-run the installer (it writes the systemd drop-in
-  and restarts FPM) or check `systemctl show phpX.Y-fpm -p ReadWritePaths`.
-- **Caddy validate failed:** the previous panel snippet is restored; other
-  vhosts are unchanged.
-- **Public IP mode cert warning:** expected (`tls internal`). Use domain mode
-  for a trusted certificate.
+  (`ProtectSystem=full`). Re-run the installer or check
+  `systemctl show phpX.Y-fpm -p ReadWritePaths`.
+- **Validate failed:** the previous panel vhost is restored; other sites are
+  unchanged.
+- **Public IP mode cert warning:** expected (self-signed / `tls internal`). Use
+  domain mode for a trusted certificate.
 - **ufw inactive:** pass `--enable-ufw` or open the port yourself.
 
 ## Security follow-ups (not auto-fixed)
