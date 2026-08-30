@@ -79,11 +79,13 @@ final class ApacheVhostTest extends TestCase
     {
         $rt = $this->runtime();
         $rt->files['/etc/apache2/sites-available/shop.example.com.conf'] = "<VirtualHost *:80>\n    ServerName shop.example.com\n    DocumentRoot /data/www/shop.example.com\n</VirtualHost>\n";
+        $rt->files['/etc/apache2/sites-enabled/shop.example.com.conf'] = $rt->files['/etc/apache2/sites-available/shop.example.com.conf'];
         $kernel = new Kernel($this->lampConfig(), $rt);
         ob_start();
         $code = $kernel->run(['broker', 'vhost.del', 'shop.example.com'], []);
         ob_get_clean();
         $this->assertSame(0, $code);
         $this->assertArrayNotHasKey('/etc/apache2/sites-available/shop.example.com.conf', $rt->files);
+        $this->assertArrayNotHasKey('/etc/apache2/sites-enabled/shop.example.com.conf', $rt->files);
     }
 }

@@ -126,7 +126,13 @@ final class ApacheDriver implements WebServerDriver
         }
 
         $this->disableSite($runtime, $config, $domain);
-        $runtime->deleteFile($confPath);
+        $available = $this->siteAvailablePath($config, $domain);
+        $enabled = rtrim($config->vhostDir, '/') . '/' . $domain . '.conf';
+        foreach (array_unique([$confPath, $available, $enabled]) as $path) {
+            if ($runtime->fileExists($path)) {
+                $runtime->deleteFile($path);
+            }
+        }
 
         try {
             $this->validate($runtime, $config);
