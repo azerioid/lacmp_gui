@@ -188,6 +188,12 @@ final class PosixRuntime implements Runtime
         return $matches;
     }
 
+    public function realPath(string $path): string
+    {
+        $resolved = realpath($path);
+        return $resolved !== false ? $resolved : $path;
+    }
+
     public function chmod(string $path, int $mode): void
     {
         @chmod($path, $mode);

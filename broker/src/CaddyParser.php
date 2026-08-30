@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace LcmpPanel\Broker;
 
+use LcmpPanel\Broker\Web\ManagedVhost;
+
 final class CaddyParser
 {
     /**
@@ -41,22 +43,7 @@ final class CaddyParser
             $phpVersion = $m[1];
         }
 
-        $readonly = $type === 'proxy';
-        foreach ($domains as $d) {
-            if (in_array($d, $readonlyVhosts, true)) {
-                $readonly = true;
-            }
-        }
-
         $basename = basename($path, '.conf');
-        if ($basename === 'default' || $basename === 'lcmp-panel') {
-            $readonly = true;
-        }
-        foreach ($domains as $d) {
-            if (str_starts_with($d, '127.0.0.1')) {
-                $readonly = true;
-            }
-        }
 
         return [
             'domains' => $domains,
@@ -67,7 +54,7 @@ final class CaddyParser
             'type' => $type,
             'tls' => !$explicitHttp || $hasTlsBlock,
             'reverse_proxy' => $proxy,
-            'readonly' => $readonly,
+            'readonly' => ManagedVhost::isReadonly($path, $domains, $root, $type, $readonlyVhosts),
             'enabled' => true,
             'source' => $path,
         ];

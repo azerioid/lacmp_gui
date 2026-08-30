@@ -32,13 +32,20 @@ final class ApacheDriver implements WebServerDriver
     public function listVhosts(Runtime $runtime, Config $config): array
     {
         $sites = [];
-        foreach ($this->vhostGlobs($runtime, $config) as $file) {
+        $seenDomain = [];
+        foreach ($this->listVhostFiles($runtime, $config) as $entry) {
             try {
-                $contents = $runtime->readFile($file);
+                $contents = $runtime->readFile($entry['path']);
             } catch (\Throwable) {
                 continue;
             }
-            $sites[] = ApacheParser::parseFile($file, $contents, $config->readonlyVhosts);
+            $parsed = ApacheParser::parseFile($entry['path'], $contents, $config->readonlyVhosts, $entry['enabled']);
+            $key = strtolower((string) $parsed['domain']);
+            if (isset($seenDomain[$key])) {
+                continue;
+            }
+            $seenDomain[$key] = true;
+            $sites[] = $parsed;
         }
         usort($sites, static fn ($a, $b) => strcmp((string) $a['domain'], (string) $b['domain']));
         return $sites;
@@ -266,23 +273,78 @@ final class ApacheDriver implements WebServerDriver
 
     private function existingPath(Runtime $runtime, Config $config, string $domain): ?string
     {
-        foreach ($this->vhostGlobs($runtime, $config) as $file) {
-            if (basename($file, '.conf') === $domain) {
-                return $file;
+        foreach ($this->listVhostFiles($runtime, $config) as $entry) {
+            if (basename($entry['path'], '.conf') === $domain) {
+                return $entry['path'];
+            }
+            try {
+                $parsed = ApacheParser::parseFile(
+                    $entry['path'],
+                    $runtime->readFile($entry['path']),
+                    $config->readonlyVhosts,
+                    $entry['enabled']
+                );
+            } catch (\Throwable) {
+                continue;
+            }
+            if (($parsed['domain'] ?? '') === $domain || in_array($domain, $parsed['domains'] ?? [], true)) {
+                return $entry['path'];
             }
         }
         $candidate = $this->siteAvailablePath($config, $domain);
         return $runtime->fileExists($candidate) ? $candidate : null;
     }
 
-    /** @return list<string> */
-    private function vhostGlobs(Runtime $runtime, Config $config): array
+    /**
+     * Debian: sites-enabled (active, often symlinks) then sites-available leftovers (disabled).
+     * EL: a single vhost dir. Dedup by real path, then basename, then ServerName.
+     *
+     * @return list<array{path:string,enabled:bool}>
+     */
+    private function listVhostFiles(Runtime $runtime, Config $config): array
     {
-        $files = $runtime->glob(rtrim($config->vhostDir, '/') . '/*.conf');
-        if ($config->vhostAvailableDir !== '' && $config->vhostAvailableDir !== $config->vhostDir) {
-            $files = array_merge($files, $runtime->glob(rtrim($config->vhostAvailableDir, '/') . '/*.conf'));
+        $enabledDir = rtrim($config->vhostDir, '/');
+        $availableDir = rtrim((string) $config->vhostAvailableDir, '/');
+        $split = $availableDir !== '' && $availableDir !== $enabledDir;
+
+        $out = [];
+        $seenCanon = [];
+        $seenBase = [];
+
+        $push = static function (string $path, bool $enabled) use ($runtime, &$out, &$seenCanon, &$seenBase): void {
+            $canon = $runtime->realPath($path);
+            if ($canon === '') {
+                $canon = $path;
+            }
+            if (isset($seenCanon[$canon])) {
+                return;
+            }
+            $base = strtolower(basename($path));
+            if (isset($seenBase[$base])) {
+                return;
+            }
+            $seenCanon[$canon] = true;
+            $seenBase[$base] = true;
+            $out[] = ['path' => $path, 'enabled' => $enabled];
+        };
+
+        foreach ($runtime->glob($enabledDir . '/*.conf') as $file) {
+            $read = $file;
+            if ($split) {
+                $avail = $availableDir . '/' . basename($file);
+                if ($runtime->fileExists($avail)) {
+                    $read = $avail;
+                }
+            }
+            $push($read, true);
         }
-        return array_values(array_unique($files));
+        if ($split) {
+            foreach ($runtime->glob($availableDir . '/*.conf') as $file) {
+                $push($file, false);
+            }
+        }
+
+        return $out;
     }
 
     private function enableSite(Runtime $runtime, Config $config, string $domain, string $confPath): void

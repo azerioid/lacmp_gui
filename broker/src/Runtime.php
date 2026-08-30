@@ -25,6 +25,9 @@ interface Runtime
 
     public function glob(string $pattern): array;
 
+    /** Resolve symlinks; return $path unchanged when it cannot be resolved. */
+    public function realPath(string $path): string;
+
     public function chmod(string $path, int $mode): void;
 
     public function chown(string $path, string $user, string $group): void;

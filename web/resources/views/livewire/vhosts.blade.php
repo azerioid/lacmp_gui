@@ -66,6 +66,9 @@
                             @if (!empty($v['readonly']))
                                 <span class="ml-1 rounded bg-ink-700 px-1.5 py-0.5 font-mono text-[10px] uppercase text-zinc-400">read-only</span>
                             @endif
+                            @if (isset($v['enabled']) && $v['enabled'] === false)
+                                <span class="ml-1 rounded bg-ink-700 px-1.5 py-0.5 font-mono text-[10px] uppercase text-zinc-500">disabled</span>
+                            @endif
                         </td>
                         <td class="px-4 py-3 font-mono text-xs text-zinc-400">{{ $v['reverse_proxy'] ?? $v['root'] }}</td>
                         <td class="px-4 py-3 font-mono">{{ $v['php_version'] ?? '—' }}</td>

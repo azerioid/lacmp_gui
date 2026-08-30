@@ -149,6 +149,12 @@ final class FakeRuntime implements Runtime
         return $out;
     }
 
+    public function realPath(string $path): string
+    {
+        $resolved = realpath($path);
+        return $resolved !== false ? $resolved : $path;
+    }
+
     public function chmod(string $path, int $mode): void
     {
     }

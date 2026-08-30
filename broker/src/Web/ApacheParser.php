@@ -9,10 +9,28 @@ final class ApacheParser
      * @param  list<string>  $readonlyVhosts
      * @return array<string,mixed>
      */
-    public static function parseFile(string $path, string $contents, array $readonlyVhosts): array
+    /**
+     * @param  list<string>  $readonlyVhosts
+     * @return array<string,mixed>
+     */
+    public static function parseFile(string $path, string $contents, array $readonlyVhosts, bool $enabled = true): array
     {
         $domain = self::match($contents, '/^\s*ServerName\s+(\S+)/m') ?? basename($path, '.conf');
+        $aliases = [];
+        if (preg_match_all('/^\s*ServerAlias\s+(.+)$/m', $contents, $am)) {
+            foreach ($am[1] as $line) {
+                foreach (preg_split('/\s+/', trim($line)) ?: [] as $alias) {
+                    if ($alias !== '') {
+                        $aliases[] = $alias;
+                    }
+                }
+            }
+        }
+        $domains = array_values(array_unique(array_merge([$domain], $aliases)));
         $root = self::match($contents, '/^\s*DocumentRoot\s+(\S+)/m');
+        if (is_string($root)) {
+            $root = trim($root, '"\'');
+        }
         $proxy = self::match($contents, '/^\s*ProxyPass\s+\/\s+(\S+)/m');
         if (is_string($proxy)) {
             $proxy = rtrim($proxy, '/');
@@ -36,17 +54,8 @@ final class ApacheParser
 
         $tls = (bool) preg_match('/^\s*SSLEngine\s+on/mi', $contents);
 
-        $basename = basename($path, '.conf');
-        $readonly = $type === 'proxy';
-        if (in_array($domain, $readonlyVhosts, true) || $basename === 'default' || $basename === 'lcmp-panel') {
-            $readonly = true;
-        }
-        if (str_starts_with($domain, '127.0.0.1')) {
-            $readonly = true;
-        }
-
         return [
-            'domains' => [$domain],
+            'domains' => $domains,
             'domain' => $domain,
             'root' => $root,
             'php_socket' => $phpSocket,
@@ -54,8 +63,8 @@ final class ApacheParser
             'type' => $type,
             'tls' => $tls,
             'reverse_proxy' => $type === 'proxy' ? $proxy : null,
-            'readonly' => $readonly,
-            'enabled' => true,
+            'readonly' => ManagedVhost::isReadonly($path, $domains, $root, $type, $readonlyVhosts),
+            'enabled' => $enabled,
             'source' => $path,
         ];
     }

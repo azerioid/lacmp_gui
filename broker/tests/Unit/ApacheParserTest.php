@@ -40,4 +40,40 @@ APACHE;
         $this->assertTrue($parsed['readonly']);
         $this->assertSame('127.0.0.1:9001', $parsed['reverse_proxy']);
     }
+
+    public function test_marks_distro_default_files_readonly(): void
+    {
+        $ssl = <<<'APACHE'
+<VirtualHost *:443>
+    ServerName localhost
+    SSLEngine on
+    DocumentRoot /var/www/html
+</VirtualHost>
+APACHE;
+        $parsed = ApacheParser::parseFile('/etc/apache2/sites-available/default-ssl.conf', $ssl, []);
+        $this->assertTrue($parsed['readonly']);
+
+        $plain = <<<'APACHE'
+<VirtualHost *:80>
+    ServerName localhost
+    DocumentRoot /var/www/html
+</VirtualHost>
+APACHE;
+        $this->assertTrue(ApacheParser::parseFile('/etc/apache2/sites-available/000-default.conf', $plain, [])['readonly']);
+        $this->assertTrue(ApacheParser::parseFile('/etc/apache2/sites-available/localhost.conf', $plain, [])['readonly']);
+    }
+
+    public function test_marks_panel_document_root_readonly(): void
+    {
+        $contents = <<<'APACHE'
+<VirtualHost *:443>
+    ServerName 157.245.84.199
+    SSLEngine on
+    DocumentRoot /usr/local/lib/lcmp-panel/web/public
+</VirtualHost>
+APACHE;
+        $parsed = ApacheParser::parseFile('/etc/apache2/sites-available/lcmp-panel.conf', $contents, []);
+        $this->assertTrue($parsed['readonly']);
+        $this->assertSame('157.245.84.199', $parsed['domain']);
+    }
 }

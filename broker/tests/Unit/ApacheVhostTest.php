@@ -88,4 +88,38 @@ final class ApacheVhostTest extends TestCase
         $this->assertArrayNotHasKey('/etc/apache2/sites-available/shop.example.com.conf', $rt->files);
         $this->assertArrayNotHasKey('/etc/apache2/sites-enabled/shop.example.com.conf', $rt->files);
     }
+
+    public function test_lists_each_vhost_once_despite_available_and_enabled(): void
+    {
+        $rt = $this->runtime();
+        $panel = "<VirtualHost *:443>\n    ServerName 157.245.84.199\n    SSLEngine on\n    DocumentRoot /usr/local/lib/lcmp-panel/web/public\n</VirtualHost>\n";
+        $ssl = "<VirtualHost *:443>\n    ServerName localhost\n    SSLEngine on\n    DocumentRoot /var/www/html\n</VirtualHost>\n";
+        $user = "<VirtualHost *:80>\n    ServerName shop.example.com\n    DocumentRoot /data/www/shop.example.com\n</VirtualHost>\n";
+        $disabled = "<VirtualHost *:80>\n    ServerName idle.example.com\n    DocumentRoot /data/www/idle.example.com\n</VirtualHost>\n";
+        foreach (['lcmp-panel' => $panel, 'default-ssl' => $ssl, 'shop.example.com' => $user] as $name => $body) {
+            $rt->files['/etc/apache2/sites-available/' . $name . '.conf'] = $body;
+            $rt->files['/etc/apache2/sites-enabled/' . $name . '.conf'] = $body;
+        }
+        $rt->files['/etc/apache2/sites-available/idle.example.com.conf'] = $disabled;
+
+        $kernel = new Kernel($this->lampConfig(), $rt);
+        ob_start();
+        $code = $kernel->run(['broker', 'vhost.list'], []);
+        $out = ob_get_clean();
+        $this->assertSame(0, $code, $out);
+        $vhosts = json_decode($out, true)['data']['vhosts'] ?? [];
+        $domains = array_column($vhosts, 'domain');
+        $this->assertSame(array_values(array_unique($domains)), $domains);
+        $this->assertCount(4, $vhosts);
+        $byDomain = [];
+        foreach ($vhosts as $row) {
+            $byDomain[$row['domain']] = $row;
+        }
+        $this->assertTrue($byDomain['157.245.84.199']['readonly']);
+        $this->assertTrue($byDomain['localhost']['readonly']);
+        $this->assertFalse($byDomain['shop.example.com']['readonly']);
+        $this->assertTrue($byDomain['shop.example.com']['enabled']);
+        $this->assertFalse($byDomain['idle.example.com']['enabled']);
+        $this->assertFalse($byDomain['idle.example.com']['readonly']);
+    }
 }
