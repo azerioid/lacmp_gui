@@ -23,8 +23,9 @@ chmod +x lcmp_gui.sh
 ./lcmp_gui.sh
 ```
 
-With no flags, a TTY prompts for access mode (default **tunnel**). Non-interactive
-runs default to tunnel.
+With no flags, a TTY prompts for access mode (default **tunnel**) and listen
+port (default **3169**). Non-interactive runs default to tunnel on 3169.
+Override with `--port=NNNN`.
 
 `lcmp_gui.sh` is a thin preflight (OS gate, LCMP present, php-cli + composer).
 All install logic is in `deploy/install.sh`.
@@ -33,7 +34,7 @@ All install logic is in `deploy/install.sh`.
 
 | Mode | How you reach it | TLS | When to use |
 | --- | --- | --- | --- |
-| **tunnel** (default) | `ssh -L 6969:127.0.0.1:6969 user@host` then `http://127.0.0.1:6969` | localhost HTTP only | Safest. No public listener. |
+| **tunnel** (default) | `ssh -L 3169:127.0.0.1:3169 user@host` then `http://127.0.0.1:3169` (replace `3169` if you passed `--port`) | localhost HTTP only | Safest. No public listener. |
 | **public + domain** | `https://panel.example.com:PORT` | Let's Encrypt | Recommended if you have a DNS name. |
 | **public + IP** | `https://<ip>:PORT` | Caddy `tls internal` (self-signed) | No DNS. Browser shows an untrusted-cert warning. Traffic is still encrypted. |
 
@@ -42,14 +43,17 @@ By default it also enables **TOTP**, a **fail2ban** jail, and a firewall rule
 (`--require-totp` / `--fail2ban` / `--firewall` can turn those off).
 
 ```bash
-# Tunnel only (explicit)
+# Tunnel only (explicit; default port 3169)
 ./lcmp_gui.sh --access=tunnel
+
+# Custom port
+./lcmp_gui.sh --port=4444
 
 # Public IP mode (self-signed HTTPS)
 ./lcmp_gui.sh --access=public --port=3169 --ip=203.0.113.10
 
-# Non-interactive (automation — must pass --domain or --ip in public mode)
-./lcmp_gui.sh --non-interactive --access=public --ip=203.0.113.10 --port=6969 --enable-ufw
+# Non-interactive (automation — must pass --domain= or --ip= in public mode)
+./lcmp_gui.sh --non-interactive --access=public --ip=203.0.113.10 --port=3169 --enable-ufw
 
 # Caddy apply: auto (default) probes the admin API, then systemctl reload, then restart
 ./lcmp_gui.sh --caddy-reload=auto
@@ -64,13 +68,13 @@ By default it also enables **TOTP**, a **fail2ban** jail, and a firewall rule
 If ufw is installed but inactive, pass `--enable-ufw` so the installer can
 enable it **after** allowing SSH/22.
 
-The SSH-tunnel path on `127.0.0.1:6969` stays available even after public mode.
+The SSH-tunnel path on `127.0.0.1:<port>` (default 3169) stays available even after public mode. Replace 3169 with your `--port` if you changed it.
 
 | Flag | Meaning |
 | --- | --- |
 | `--access=tunnel\|public` | Access mode (default: tunnel) |
 | `--domain=` / `--ip=` | Public HTTPS identity |
-| `--port=` | Public listen port (default 6969; not 80/443) |
+| `--port=` | Panel listen port (default 3169; not 80/443). Used for the SSH tunnel bind and for public HTTPS. |
 | `--allow-ip=` | Comma-list or repeatable CIDR allowlist |
 | `--email=` / `--le-email=` | ACME email (domain mode) |
 | `--caddy-reload=` | `auto` (default), `api`, `systemctl`, `restart`, `none` |

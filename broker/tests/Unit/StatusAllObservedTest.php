@@ -89,7 +89,7 @@ final class StatusAllObservedTest extends TestCase
         $rt = new FakeRuntime();
         $rt->files['/etc/caddy/conf.d/app.example.conf'] = "app.example {\n    reverse_proxy 127.0.0.1:9001\n}\n";
         $rt->files['/etc/caddy/conf.d/default.conf'] = "http:// {\n    reverse_proxy 127.0.0.1:9002\n}\n";
-        $rt->files['/etc/caddy/conf.d/lcmp-panel.conf'] = "127.0.0.1:6969 {\n    reverse_proxy 127.0.0.1:9003\n}\n";
+        $rt->files['/etc/caddy/conf.d/lcmp-panel.conf'] = "127.0.0.1:3169 {\n    reverse_proxy 127.0.0.1:9003\n}\n";
         $rt->files['/proc/net/tcp'] = "  sl  local_address rem_address   st\n   0: 0100007F:2329 00000000:0000 0A\n";
 
         [$code, $json] = $this->capture(new Kernel(new Config(), $rt), ['broker', 'status.all']);

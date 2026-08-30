@@ -17,7 +17,7 @@ class AuthTest extends TestCase
     public function test_setup_is_shown_when_no_users_exist(): void
     {
         $this->get('/login')->assertRedirect('/setup');
-        $this->get('/setup')->assertOk();
+        $this->get('/setup')->assertOk()->assertSee('127.0.0.1:3169', false);
     }
 
     public function test_login_is_a_post_mutation_via_livewire(): void

@@ -19,7 +19,12 @@
             {{ $slot }}
         </div>
         <p class="mt-6 text-center font-mono text-[11px] text-zinc-600">
-            Bind: 127.0.0.1:6969 · access via SSH tunnel
+            @php
+                $panelUrl = parse_url((string) config('app.url'));
+                $bindHost = $panelUrl['host'] ?? '127.0.0.1';
+                $bindPort = $panelUrl['port'] ?? null;
+            @endphp
+            Bind: {{ $bindHost }}@if ($bindPort):{{ $bindPort }}@endif · access via SSH tunnel
         </p>
     </div>
     @livewireScripts

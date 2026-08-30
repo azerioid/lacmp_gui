@@ -72,27 +72,29 @@ if systemctl is-active fail2ban >/dev/null 2>&1; then
 fi
 
 PANEL_PORT=""
+TUNNEL_PORT=""
 if [[ -f /etc/lcmp-panel/access.env ]]; then
     # shellcheck disable=SC1091
     . /etc/lcmp-panel/access.env
 fi
-if [[ -n "${PANEL_PORT:-}" ]]; then
+for _p in ${PANEL_PORT:-} ${TUNNEL_PORT:-}; do
+    [[ -n "${_p}" ]] || continue
     if command -v ufw >/dev/null 2>&1; then
-        ufw --force delete allow "${PANEL_PORT}/tcp" >/dev/null 2>&1 || true
+        ufw --force delete allow "${_p}/tcp" >/dev/null 2>&1 || true
         if [[ -n "${PANEL_ALLOW_IPS:-}" ]]; then
             IFS=',' read -ra _cidrs <<< "${PANEL_ALLOW_IPS}"
             for _cidr in "${_cidrs[@]}"; do
                 _cidr="$(echo "${_cidr}" | tr -d '[:space:]')"
                 [[ -n "${_cidr}" ]] || continue
-                ufw --force delete allow from "${_cidr}" to any port "${PANEL_PORT}" proto tcp >/dev/null 2>&1 || true
+                ufw --force delete allow from "${_cidr}" to any port "${_p}" proto tcp >/dev/null 2>&1 || true
             done
         fi
     fi
     if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active firewalld >/dev/null 2>&1; then
-        firewall-cmd --permanent --remove-port="${PANEL_PORT}/tcp" >/dev/null 2>&1 || true
+        firewall-cmd --permanent --remove-port="${_p}/tcp" >/dev/null 2>&1 || true
         firewall-cmd --reload >/dev/null 2>&1 || true
     fi
-fi
+done
 rm -f /etc/tmpfiles.d/lcmp-panel.conf
 rm -f /etc/lcmp-panel/access.env
 

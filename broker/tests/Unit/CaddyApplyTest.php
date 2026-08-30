@@ -52,10 +52,10 @@ final class CaddyApplyTest extends TestCase
 
         $kernel = new Kernel(new Config(), $rt);
         ob_start();
-        $code = $kernel->run(['broker', 'caddy.apply'], ['mode' => 'auto', 'expect_ports' => [6969]]);
+        $code = $kernel->run(['broker', 'caddy.apply'], ['mode' => 'auto', 'expect_ports' => [59111]]);
         $out = ob_get_clean();
 
         $this->assertNotSame(0, $code);
-        $this->assertStringContainsString('nothing is listening on port 6969', $out);
+        $this->assertStringContainsString('nothing is listening on port 59111', $out);
     }
 }

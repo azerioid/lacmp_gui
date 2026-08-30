@@ -23,8 +23,11 @@ INSTALL_CADDY_SNIPPET=1
 ACCESS="${ACCESS:-}"
 PANEL_DOMAIN="${PANEL_DOMAIN:-}"
 PANEL_IP="${PANEL_IP:-}"
-PANEL_PORT="${PANEL_PORT:-6969}"
-TUNNEL_PORT=6969
+DEFAULT_PANEL_PORT=3169
+PANEL_PORT="${PANEL_PORT:-$DEFAULT_PANEL_PORT}"
+PORT_FROM_CLI=0
+PREV_PORTS=""
+PREV_ALLOW_IPS=""
 LE_EMAIL="${LE_EMAIL:-}"
 ENABLE_UFW=0
 SKIP_CADDY=0
@@ -45,17 +48,117 @@ parse_bool() {
     esac
 }
 
+caddy_port_listening() {
+    local p="$1"
+    ss -tln 2>/dev/null | awk '{print $4}' | grep -Eq ":${p}$"
+}
+
+panel_snippet_uses_port() {
+    local p="$1" snippet="${CADDY_CONFD}/lcmp-panel.conf"
+    [[ -f "${snippet}" ]] || return 1
+    grep -Eq ":${p}([^0-9]|$)" "${snippet}"
+}
+
+collect_previous_ports() {
+    PREV_ALLOW_IPS=""
+    if [[ -f /etc/lcmp-panel/access.env ]]; then
+        PREV_ALLOW_IPS="$(grep '^PANEL_ALLOW_IPS=' /etc/lcmp-panel/access.env | cut -d= -f2- || true)"
+    fi
+    PREV_PORTS="$(PREFIX="${PREFIX}" CADDY_CONFD="${CADDY_CONFD}" python3 - <<'PY'
+import os, re, pathlib
+ports = set()
+ae = pathlib.Path("/etc/lcmp-panel/access.env")
+if ae.is_file():
+    for line in ae.read_text().splitlines():
+        if line.startswith("PANEL_PORT=") or line.startswith("TUNNEL_PORT="):
+            v = line.split("=", 1)[1].strip()
+            if v.isdigit():
+                ports.add(int(v))
+env = pathlib.Path(os.environ["PREFIX"] + "/web/.env")
+if env.is_file():
+    m = re.search(r"^APP_URL=.*:(\d+)\s*$", env.read_text(), re.M)
+    if m:
+        ports.add(int(m.group(1)))
+snip = pathlib.Path(os.environ["CADDY_CONFD"] + "/lcmp-panel.conf")
+if snip.is_file():
+    for m in re.finditer(r"(?:https?://[^\s:{]+:|127\.0\.0\.1:)(\d+)", snip.read_text()):
+        ports.add(int(m.group(1)))
+print(" ".join(str(p) for p in sorted(ports)))
+PY
+)"
+}
+
+validate_panel_port() {
+    local p="$1"
+    if ! [[ "${p}" =~ ^[1-9][0-9]{0,4}$ ]] || (( p > 65535 )); then
+        echo "Invalid --port=${p} (need an integer 1–65535)." >&2
+        exit 2
+    fi
+    if [[ "${p}" == "80" || "${p}" == "443" ]]; then
+        echo "Refusing to bind the panel on 80/443 (would collide with existing sites)." >&2
+        exit 2
+    fi
+    if [[ "${p}" == "22" ]]; then
+        echo "Warning: port 22 is SSH. Choose a dedicated panel port." >&2
+    fi
+    if (( p < 1024 )); then
+        echo "Warning: port ${p} is privileged (<1024). Caddy may not be able to bind it." >&2
+    fi
+    if [[ -d "${CADDY_CONFD}" ]]; then
+        local hits
+        hits="$(grep -RIl --include='*.conf' -E ":${p}([^0-9]|$)" "${CADDY_CONFD}" 2>/dev/null | grep -v '/lcmp-panel.conf$' || true)"
+        if [[ -n "${hits}" ]]; then
+            echo "Warning: another Caddy snippet already mentions port ${p}:" >&2
+            echo "${hits}" >&2
+        fi
+    fi
+    if command -v ss >/dev/null 2>&1 && caddy_port_listening "${p}"; then
+        if panel_snippet_uses_port "${p}"; then
+            return 0
+        fi
+        echo "Port ${p} is already in use by another listener. Choose a different --port." >&2
+        ss -tln 2>/dev/null | grep -E ":${p}( |$)" >&2 || true
+        exit 2
+    fi
+}
+
+firewall_delete_port() {
+    local p="$1"
+    [[ -n "${p}" ]] || return 0
+    if command -v ufw >/dev/null 2>&1; then
+        ufw --force delete allow "${p}/tcp" >/dev/null 2>&1 || true
+        if [[ -n "${PANEL_ALLOW_IPS:-}" ]]; then
+            local cidr
+            IFS=',' read -ra _cidrs <<< "${PANEL_ALLOW_IPS}"
+            for cidr in "${_cidrs[@]}"; do
+                cidr="$(echo "${cidr}" | tr -d '[:space:]')"
+                [[ -n "${cidr}" ]] || continue
+                ufw --force delete allow from "${cidr}" to any port "${p}" proto tcp >/dev/null 2>&1 || true
+            done
+        fi
+        if [[ ${#ALLOW_IPS[@]} -gt 0 ]]; then
+            for cidr in "${ALLOW_IPS[@]}"; do
+                ufw --force delete allow from "${cidr}" to any port "${p}" proto tcp >/dev/null 2>&1 || true
+            done
+        fi
+    fi
+    if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active firewalld >/dev/null 2>&1; then
+        firewall-cmd --permanent --remove-port="${p}/tcp" >/dev/null 2>&1 || true
+        firewall-cmd --reload >/dev/null 2>&1 || true
+    fi
+}
+
 usage() {
     cat <<'EOF'
 Usage: lcmp_gui.sh [options]
        deploy/install.sh [options]
 
-Access (default: tunnel — localhost 127.0.0.1:6969 + SSH):
+Access (default: tunnel — localhost 127.0.0.1:3169 + SSH; override with --port):
   --access=tunnel|public
   --domain=<fqdn>              public domain mode (Let's Encrypt)
   --ip=<addr>                  public IP mode (tls internal). Blank in
                                interactive mode = auto-detect.
-  --port=<n>                   public listen port (default: 6969; not 80/443)
+  --port=<n>                   panel listen port (default: 3169; not 80/443)
   --allow-ip=<cidr[,cidr...]>  Caddy + firewall allowlist (repeatable)
   --email=<addr>  --le-email=  Let's Encrypt account email (domain mode)
 
@@ -110,8 +213,8 @@ while [[ $# -gt 0 ]]; do
         --domain) PANEL_DOMAIN="${2:-}"; shift 2 ;;
         --ip=*) PANEL_IP="${1#*=}"; shift ;;
         --ip) PANEL_IP="${2:-}"; shift 2 ;;
-        --port=*) PANEL_PORT="${1#*=}"; shift ;;
-        --port) PANEL_PORT="${2:-}"; shift 2 ;;
+        --port=*) PANEL_PORT="${1#*=}"; PORT_FROM_CLI=1; shift ;;
+        --port) PANEL_PORT="${2:-}"; PORT_FROM_CLI=1; shift 2 ;;
         --email=*) LE_EMAIL="${1#*=}"; shift ;;
         --email) LE_EMAIL="${2:-}"; shift 2 ;;
         --le-email=*) LE_EMAIL="${1#*=}"; shift ;;
@@ -152,14 +255,16 @@ if [[ -z "${ACCESS}" ]]; then
         ACCESS=tunnel
     elif [[ -t 0 && -t 1 ]]; then
         echo "LCMP Panel installer"
-        echo "  tunnel  — localhost ${TUNNEL_PORT} + SSH tunnel (default, safest)"
+        echo "  tunnel  — localhost ${PANEL_PORT} + SSH tunnel (default, safest)"
         echo "  public  — HTTPS on a port (domain = Let's Encrypt, or IP = self-signed)"
         read -r -p "Access mode [tunnel/public] (default: tunnel): " ACCESS
         ACCESS="${ACCESS:-tunnel}"
         if [[ "${ACCESS}" == "public" ]]; then
             read -r -p "Domain for automatic HTTPS (blank = IP / self-signed): " PANEL_DOMAIN
-            read -r -p "Public port [${PANEL_PORT}]: " _p
-            PANEL_PORT="${_p:-$PANEL_PORT}"
+            if [[ "${PORT_FROM_CLI}" -eq 0 ]]; then
+                read -r -p "Panel port [${PANEL_PORT}]: " _p
+                PANEL_PORT="${_p:-$PANEL_PORT}"
+            fi
             if [[ -n "${PANEL_DOMAIN}" ]]; then
                 read -r -p "Let's Encrypt email (optional): " LE_EMAIL
             else
@@ -175,6 +280,10 @@ if [[ -z "${ACCESS}" ]]; then
             [[ "${_f}" =~ ^[Nn] ]] && DO_FIREWALL=false || DO_FIREWALL=true
             read -r -p "Install fail2ban jail for failed logins? [Y/n]: " _b
             [[ "${_b}" =~ ^[Nn] ]] && DO_FAIL2BAN=false || DO_FAIL2BAN=true
+        fi
+        if [[ "${ACCESS}" != "public" && "${PORT_FROM_CLI}" -eq 0 ]]; then
+            read -r -p "Panel port [${PANEL_PORT}]: " _p
+            PANEL_PORT="${_p:-$PANEL_PORT}"
         fi
         read -r -p "Require TOTP for admins? [Y/n]: " _t
         if [[ "${_t}" =~ ^[Nn] ]]; then
@@ -213,6 +322,9 @@ if [[ "${ACCESS}" == "public" ]]; then
     INSTALL_CADDY_SNIPPET=1
     SKIP_CADDY=0
 fi
+
+collect_previous_ports
+validate_panel_port "${PANEL_PORT}"
 
 # trim allowlist entries
 _tmp=()
@@ -498,11 +610,6 @@ ensure_caddy_running() {
     fi
 }
 
-caddy_port_listening() {
-    local p="$1"
-    ss -tln 2>/dev/null | awk '{print $4}' | grep -Eq ":${p}$"
-}
-
 verify_caddy_healthy() {
     local i
     systemctl is-active --quiet caddy || return 1
@@ -510,17 +617,12 @@ verify_caddy_healthy() {
         return 0
     fi
     for i in $(seq 1 25); do
-        if caddy_port_listening "${TUNNEL_PORT}"; then
-            if [[ "${ACCESS}" != "public" ]]; then
-                return 0
-            fi
-            if caddy_port_listening "${PANEL_PORT}"; then
-                return 0
-            fi
+        if caddy_port_listening "${PANEL_PORT}"; then
+            return 0
         fi
         sleep 0.3
     done
-    echo "==> Listen check: tunnel ${TUNNEL_PORT}=$(caddy_port_listening "${TUNNEL_PORT}" && echo up || echo down) public ${PANEL_PORT}=$(caddy_port_listening "${PANEL_PORT}" && echo up || echo down)" >&2
+    echo "==> Listen check: port ${PANEL_PORT}=$(caddy_port_listening "${PANEL_PORT}" && echo up || echo down)" >&2
     return 1
 }
 
@@ -552,14 +654,14 @@ raise SystemExit(1 if not raw else (0 if json.loads(raw).get("ok") else 1))' <<<
 
 caddy_apply() {
     local snippet="$1" bak="$2"
-    local ports="${TUNNEL_PORT}"
+    local ports="${PANEL_PORT}"
 
     echo "==> Caddy apply strategy: ${CADDY_RELOAD} (shared broker caddy.apply)"
 
     if [[ "${CADDY_RELOAD}" == "none" ]]; then
         echo "Caddy snippet written and validated. Not applying (--caddy-reload=none)."
         echo "Apply manually with one of:"
-        echo "  ${PREFIX}/broker caddy.apply   # stdin: {\"mode\":\"auto\",\"expect_ports\":[${TUNNEL_PORT}]}"
+        echo "  ${PREFIX}/broker caddy.apply   # stdin: {\"mode\":\"auto\",\"expect_ports\":[${PANEL_PORT}]}"
         echo "  ${CADDY_BIN} reload --config ${CADDYFILE} --address 127.0.0.1:2019 --force"
         echo "  systemctl reload caddy"
         echo "  systemctl restart caddy"
@@ -569,10 +671,6 @@ caddy_apply() {
     if ! ensure_caddy_running; then
         rollback_panel_snippet "${snippet}" "${bak}"
         return 1
-    fi
-
-    if [[ "${ACCESS}" == "public" && -n "${PANEL_PORT}" && "${PANEL_PORT}" != "${TUNNEL_PORT}" ]]; then
-        ports="${TUNNEL_PORT},${PANEL_PORT}"
     fi
 
     export M="${CADDY_RELOAD}" P="${ports}"
@@ -602,7 +700,7 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
     echo "  web user:      ${WEB_USER}"
     echo "  php:           ${PHP_VER}"
     echo "  access:        ${ACCESS}"
-    echo "  port:          ${PANEL_PORT} (tunnel ${TUNNEL_PORT})"
+    echo "  port:          ${PANEL_PORT}"
     echo "  domain/ip:     ${PANEL_DOMAIN:-}${PANEL_IP:-auto-if-interactive}"
     echo "  caddy reload:  ${CADDY_RELOAD}"
     echo "  require totp:  ${REQUIRE_TOTP}"
@@ -810,7 +908,7 @@ if [[ "${ACCESS}" == "public" ]]; then
     env_set "${PREFIX}/web/.env" PANEL_REQUIRE_TOTP "${REQUIRE_TOTP}"
     env_set "${PREFIX}/web/.env" TRUSTED_PROXIES 127.0.0.1
 else
-    env_set "${PREFIX}/web/.env" APP_URL "http://127.0.0.1:${TUNNEL_PORT}"
+    env_set "${PREFIX}/web/.env" APP_URL "http://127.0.0.1:${PANEL_PORT}"
     env_set "${PREFIX}/web/.env" SESSION_SECURE_COOKIE false
     env_set "${PREFIX}/web/.env" PANEL_REQUIRE_TOTP "${REQUIRE_TOTP}"
     env_set "${PREFIX}/web/.env" TRUSTED_PROXIES 127.0.0.1
@@ -1001,11 +1099,6 @@ if [[ "${INSTALL_CADDY_SNIPPET}" -eq 1 ]]; then
             PANEL_IP="$(detect_public_ip)"
             [[ -n "${PANEL_IP}" ]] || { echo "Could not detect a public IP. Pass --ip=..." >&2; exit 1; }
         fi
-        [[ "${PANEL_PORT}" =~ ^[0-9]+$ ]] || { echo "Invalid --port" >&2; exit 2; }
-        if [[ "${PANEL_PORT}" == "80" || "${PANEL_PORT}" == "443" ]]; then
-            echo "Refusing to bind the panel on 80/443 (would collide with existing sites)." >&2
-            exit 2
-        fi
         if [[ -n "${PANEL_DOMAIN}" ]]; then
             env_set "${PREFIX}/web/.env" APP_URL "https://${PANEL_DOMAIN}:${PANEL_PORT}"
         else
@@ -1028,10 +1121,10 @@ if [[ "${INSTALL_CADDY_SNIPPET}" -eq 1 ]]; then
     fi
 
     ALLOW_CSV="$(IFS=','; echo "${ALLOW_IPS[*]+"${ALLOW_IPS[*]}"}")"
-    python3 - "${SNIPPET}" "${PREFIX}" "${TUNNEL_PORT}" "${ACCESS}" \
-        "${PANEL_DOMAIN}" "${PANEL_IP}" "${PANEL_PORT}" "${LE_EMAIL}" "${ALLOW_CSV}" <<'PY'
+    python3 - "${SNIPPET}" "${PREFIX}" "${PANEL_PORT}" "${ACCESS}" \
+        "${PANEL_DOMAIN}" "${PANEL_IP}" "${LE_EMAIL}" "${ALLOW_CSV}" <<'PY'
 import pathlib, sys
-snippet, prefix, tunnel_port, access, domain, ip, port, email, allow_csv = sys.argv[1:10]
+snippet, prefix, port, access, domain, ip, email, allow_csv = sys.argv[1:9]
 allow = [a.strip() for a in allow_csv.split(",") if a.strip()]
 web = prefix + "/web/public"
 sock = "unix//run/php/lcmp-panel.sock"
@@ -1058,7 +1151,7 @@ parts = []
 parts.append(f"""# LCMP Panel — generated by install.sh
 # Localhost HTTP is the SSH-tunnel fallback (never 0.0.0.0).
 
-http://127.0.0.1:{tunnel_port} {{
+http://127.0.0.1:{port} {{
     bind 127.0.0.1
     encode gzip zstd
     root * {web}
@@ -1145,7 +1238,6 @@ _ALLOW_CSV="$(IFS=','; echo "${ALLOW_IPS[*]+"${ALLOW_IPS[*]}"}")"
 cat > /etc/lcmp-panel/access.env <<EOF
 ACCESS_MODE=${ACCESS}
 PANEL_PORT=${PANEL_PORT}
-TUNNEL_PORT=${TUNNEL_PORT}
 PANEL_HAS_DOMAIN=$([ -n "${PANEL_DOMAIN}" ] && echo 1 || echo 0)
 PANEL_ALLOW_IPS=${_ALLOW_CSV}
 EOF
@@ -1213,6 +1305,15 @@ if [[ "${DO_FIREWALL}" == "true" ]]; then
     fi
 fi
 
+if [[ "${INSTALL_CADDY_SNIPPET}" -eq 1 && "${CADDY_RELOAD}" != "none" ]]; then
+    for _old in ${PREV_PORTS}; do
+        if [[ "${_old}" != "${PANEL_PORT}" ]]; then
+            echo "==> Removing stale firewall rule for previous panel port ${_old}"
+            PANEL_ALLOW_IPS="${PREV_ALLOW_IPS:-}" firewall_delete_port "${_old}"
+        fi
+    done
+fi
+
 # Re-assert traversal vs. secrecy after every rsync/chown.
 chmod 0751 "${PREFIX}"
 chown root:root "${PREFIX}"
@@ -1233,10 +1334,11 @@ echo "  Broker:  ${PREFIX}/broker"
 echo "  Web:     ${PREFIX}/web"
 echo "  Sudoers: /etc/sudoers.d/lcmp-panel"
 echo "  Access:  ${ACCESS}"
+echo "  Port:    ${PANEL_PORT}"
 echo
-echo "SSH-tunnel fallback (always):"
-echo "  ssh -L ${TUNNEL_PORT}:127.0.0.1:${TUNNEL_PORT} <this-host>"
-echo "  then http://127.0.0.1:${TUNNEL_PORT}"
+echo "SSH tunnel (replace ${PANEL_PORT} if you passed a different --port):"
+echo "  ssh -L ${PANEL_PORT}:127.0.0.1:${PANEL_PORT} <this-host>"
+echo "  then http://127.0.0.1:${PANEL_PORT}"
 if [[ "${ACCESS}" == "public" ]]; then
     echo
     echo "Public HTTPS is enabled (self-signed warning in IP mode; trusted cert in domain mode)."
