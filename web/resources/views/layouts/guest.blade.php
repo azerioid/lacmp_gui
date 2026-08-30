@@ -13,7 +13,14 @@
     <div class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-12">
         <div class="mb-8 text-center">
             <div class="font-semibold tracking-wide text-zinc-100">LCMP Panel</div>
-            <div class="font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">privileged operations · 2FA required</div>
+            <div class="font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">
+                privileged operations
+                @if (config('lcmp.require_totp'))
+                    · 2FA required
+                @else
+                    · password only
+                @endif
+            </div>
         </div>
         <div class="panel p-6">
             {{ $slot }}

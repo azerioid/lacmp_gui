@@ -74,6 +74,86 @@ class AuthTest extends TestCase
         $user = $this->admin();
         $this->actingAs($user);
         $this->get('/')->assertOk();
+        $this->get('/settings')->assertOk()
+            ->assertSee('Disabled: admins log in with password only', false)
+            ->assertDontSee('2FA REQUIRED', false);
+    }
+
+    public function test_setup_skips_enrollment_when_totp_not_required(): void
+    {
+        config(['lcmp.require_totp' => false]);
+
+        Livewire::test(\App\Livewire\Auth\SetupWizard::class)
+            ->assertSee('Password-only', false)
+            ->assertDontSee('Enroll authenticator', false)
+            ->set('name', 'Admin')
+            ->set('email', 'admin@example.com')
+            ->set('password', 'AdminPassw0rd!')
+            ->set('password_confirmation', 'AdminPassw0rd!')
+            ->call('createAccount')
+            ->assertRedirect(route('dashboard'));
+
+        $user = User::query()->first();
+        $this->assertNotNull($user);
+        $this->assertNull($user->two_factor_secret);
+        $this->assertFalse($user->hasTwoFactorEnabled());
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_setup_forces_enrollment_when_totp_required(): void
+    {
+        config(['lcmp.require_totp' => true]);
+
+        Livewire::test(\App\Livewire\Auth\SetupWizard::class)
+            ->assertSee('2FA enrollment is required', false)
+            ->set('name', 'Admin')
+            ->set('email', 'admin@example.com')
+            ->set('password', 'AdminPassw0rd!')
+            ->set('password_confirmation', 'AdminPassw0rd!')
+            ->call('createAccount')
+            ->assertSet('step', 2)
+            ->assertSee('Enroll authenticator', false);
+
+        $user = User::query()->first();
+        $this->assertNotNull($user);
+        $this->assertNotNull($user->two_factor_secret);
+        $this->assertFalse($user->hasTwoFactorEnabled());
+    }
+
+    public function test_login_is_password_only_when_totp_not_required(): void
+    {
+        config(['lcmp.require_totp' => false]);
+        $user = $this->admin();
+
+        Livewire::test(\App\Livewire\Auth\Login::class)
+            ->set('email', $user->email)
+            ->set('password', 'password')
+            ->call('authenticate')
+            ->assertRedirect(route('dashboard'));
+    }
+
+    public function test_login_sends_unenrolled_user_to_setup_when_totp_required(): void
+    {
+        config(['lcmp.require_totp' => true]);
+        $user = $this->admin();
+
+        Livewire::test(\App\Livewire\Auth\Login::class)
+            ->set('email', $user->email)
+            ->set('password', 'password')
+            ->call('authenticate')
+            ->assertRedirect(route('two-factor.setup'));
+    }
+
+    public function test_optional_totp_setup_can_be_skipped(): void
+    {
+        config(['lcmp.require_totp' => false]);
+        $user = $this->admin();
+        $this->actingAs($user);
+
+        Livewire::test(\App\Livewire\Auth\TwoFactorSetup::class)
+            ->assertSee('optional', false)
+            ->call('skip')
+            ->assertRedirect(route('dashboard'));
     }
 
     public function test_confirmed_2fa_user_reaches_dashboard(): void

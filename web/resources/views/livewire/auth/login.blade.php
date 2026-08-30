@@ -3,7 +3,13 @@
         <p class="mb-4 text-sm text-brass-400">{{ session('status') }}</p>
     @endif
     <h2 class="mb-1 text-base font-medium text-zinc-100">Sign in</h2>
-    <p class="mb-6 text-sm text-zinc-500">Password plus TOTP. No shared logins.</p>
+    <p class="mb-6 text-sm text-zinc-500">
+        @if (config('lcmp.require_totp'))
+            Password plus TOTP. No shared logins.
+        @else
+            Password only. No shared logins.
+        @endif
+    </p>
     <form wire:submit="authenticate" class="space-y-4">
         <label class="block text-xs uppercase tracking-wide text-zinc-500">Email
             <input type="email" wire:model="email" class="field mt-1" autocomplete="username" required>

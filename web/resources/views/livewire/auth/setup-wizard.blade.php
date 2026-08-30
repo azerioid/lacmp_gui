@@ -1,7 +1,14 @@
 <div>
     @if ($step === 1)
         <h2 class="mb-1 text-base font-medium text-zinc-100">Create the admin account</h2>
-        <p class="mb-6 text-sm text-zinc-500">This is the only login. 2FA is mandatory after this step.</p>
+        <p class="mb-6 text-sm text-zinc-500">
+            This is the only login.
+            @if (config('lcmp.require_totp'))
+                2FA enrollment is required after this step.
+            @else
+                Password-only (TOTP is not required).
+            @endif
+        </p>
         <form wire:submit="createAccount" class="space-y-4">
             <label class="block text-xs uppercase tracking-wide text-zinc-500">Name
                 <input type="text" wire:model="name" class="field mt-1" required>

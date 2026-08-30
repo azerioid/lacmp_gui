@@ -277,7 +277,7 @@ Web-server apply (default: auto):
       none       write + validate; print the apply command; do not apply
 
 Security:
-  --require-totp=true|false    default true (always true-recommended in public)
+  --require-totp=true|false    public default true; tunnel default false
   --firewall=true|false        default true in public (ufw / firewalld)
   --fail2ban=true|false        default true in public
   --enable-ufw                 if ufw is inactive, enable it (SSH/22 first)
@@ -395,11 +395,20 @@ if [[ -z "${ACCESS}" ]]; then
             read -r -p "Panel port [${PANEL_PORT}]: " _p
             PANEL_PORT="${_p:-$PANEL_PORT}"
         fi
-        read -r -p "Require TOTP for admins? [Y/n]: " _t
-        if [[ "${_t}" =~ ^[Nn] ]]; then
-            REQUIRE_TOTP=false
+        if [[ "${ACCESS}" == "public" ]]; then
+            read -r -p "Require TOTP for admins? [Y/n]: " _t
+            if [[ "${_t}" =~ ^[Nn] ]]; then
+                REQUIRE_TOTP=false
+            else
+                REQUIRE_TOTP=true
+            fi
         else
-            REQUIRE_TOTP=true
+            read -r -p "Require TOTP for admins? [y/N]: " _t
+            if [[ "${_t}" =~ ^[Yy] ]]; then
+                REQUIRE_TOTP=true
+            else
+                REQUIRE_TOTP=false
+            fi
         fi
     else
         ACCESS=tunnel
@@ -408,10 +417,13 @@ fi
 ACCESS="$(echo "${ACCESS}" | tr '[:upper:]' '[:lower:]')"
 [[ "${ACCESS}" == "tunnel" || "${ACCESS}" == "public" ]] || { echo "Invalid --access=${ACCESS}" >&2; exit 2; }
 
-if [[ "${ACCESS}" == "public" && -z "${REQUIRE_TOTP}" ]]; then
-    REQUIRE_TOTP=true
+if [[ -z "${REQUIRE_TOTP}" ]]; then
+    if [[ "${ACCESS}" == "public" ]]; then
+        REQUIRE_TOTP=true
+    else
+        REQUIRE_TOTP=false
+    fi
 fi
-REQUIRE_TOTP="${REQUIRE_TOTP:-true}"
 if [[ "${ACCESS}" == "public" ]]; then
     DO_FIREWALL="${DO_FIREWALL:-true}"
     DO_FAIL2BAN="${DO_FAIL2BAN:-true}"

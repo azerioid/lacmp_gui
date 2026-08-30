@@ -49,8 +49,14 @@ class SetupWizard extends Component
         ]);
 
         Auth::login($user);
-        request()->session()->regenerate();
-        request()->session()->put('last_activity_at', time());
+        session()->regenerate();
+        session()->put('last_activity_at', time());
+
+        if (! config('lcmp.require_totp')) {
+            $this->redirectRoute('dashboard', navigate: true);
+
+            return;
+        }
 
         $this->secret = $totp->generateSecret();
         $totp->storeUnconfirmed($user, $this->secret);

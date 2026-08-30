@@ -40,8 +40,8 @@ class TwoFactorChallenge extends Component
         }
         Auth::login($user);
         session()->forget('login.id');
-        request()->session()->regenerate();
-        request()->session()->put('last_activity_at', time());
+        session()->regenerate();
+        session()->put('last_activity_at', time());
         $user->forceFill([
             'last_login_at' => now(),
             'last_login_ip' => request()->ip(),

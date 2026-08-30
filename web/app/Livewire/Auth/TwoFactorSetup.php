@@ -33,6 +33,12 @@ class TwoFactorSetup extends Component
         $this->qr = $totp->qrSvg($user->email, $this->secret);
     }
 
+    public function skip(): void
+    {
+        abort_if(config('lcmp.require_totp'), 403);
+        $this->redirectRoute('dashboard', navigate: true);
+    }
+
     public function confirm(TotpService $totp): void
     {
         $user = Auth::user();

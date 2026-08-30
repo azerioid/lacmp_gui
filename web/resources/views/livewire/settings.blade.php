@@ -31,6 +31,22 @@
         <div><button class="btn-primary" type="submit">Update password</button></div>
     </form>
 
+    <section class="panel p-5 space-y-2">
+        <h2 class="text-sm font-medium">Two-factor (TOTP)</h2>
+        @if ($totpRequired)
+            <p class="text-sm text-zinc-400">Required for admin login (PANEL_REQUIRE_TOTP). Reinstall with <span class="font-mono">--require-totp=false</span> to allow password-only.</p>
+            <p class="text-sm {{ $totpEnrolled ? 'text-good' : 'text-warn' }}">{{ $totpEnrolled ? 'This account is enrolled.' : 'This account is not enrolled yet.' }}</p>
+        @else
+            <p class="text-sm text-zinc-400">Disabled: admins log in with password only. Optional enrollment is available.</p>
+            <p class="text-sm text-warn">If this panel is internet-facing, reinstall with <span class="font-mono">--require-totp=true</span>.</p>
+            @unless ($totpEnrolled)
+                <a class="btn-ghost inline-block text-xs" href="{{ route('two-factor.setup') }}">Enroll authenticator (optional)</a>
+            @else
+                <p class="text-sm text-good">This account is enrolled; login still asks for a code.</p>
+            @endif
+        @endif
+    </section>
+
     <form wire:submit="savePanel" class="panel grid gap-4 p-5">
         <h2 class="text-sm font-medium">Session &amp; access</h2>
         <label class="text-xs uppercase tracking-wide text-zinc-500">Idle timeout (minutes)

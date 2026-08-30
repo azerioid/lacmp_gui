@@ -128,7 +128,12 @@ class SettingsPage extends Component
 
     public function render()
     {
-        return view('livewire.settings')->layoutData([
+        $user = Auth::user();
+
+        return view('livewire.settings', [
+            'totpRequired' => (bool) config('lcmp.require_totp'),
+            'totpEnrolled' => $user instanceof User && $user->hasTwoFactorEnabled(),
+        ])->layoutData([
             'heading' => 'Settings',
             'sub' => 'Admin, session, IP allowlist, php.ini',
         ]);
