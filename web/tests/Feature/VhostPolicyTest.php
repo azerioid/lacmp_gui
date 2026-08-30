@@ -90,6 +90,55 @@ class VhostPolicyTest extends TestCase
         $this->get('/vhosts/delete/projob.az')->assertNotFound();
     }
 
+    public function test_duplicate_create_is_a_clean_already_exists_error(): void
+    {
+        $this->actingAs($this->admin());
+        Livewire::test(\App\Livewire\VhostsPage::class)
+            ->set('domain', 'projob.az')
+            ->set('root', '/data/www/projob.az')
+            ->set('type', 'php')
+            ->set('php_version', '8.4')
+            ->call('create')
+            ->assertSet('error', 'projob.az is managed externally and can\'t be edited.');
+    }
+
+    public function test_non_loopback_proxy_upstream_is_rejected(): void
+    {
+        $this->actingAs($this->admin());
+        Livewire::test(\App\Livewire\VhostsPage::class)
+            ->set('domain', 'proxy.example.com')
+            ->set('root', '/data/www/proxy.example.com')
+            ->set('type', 'proxy')
+            ->set('upstream', '8.8.8.8:443')
+            ->call('create')
+            ->assertSet('error', 'Upstream must be 127.0.0.1:<port>.');
+        $this->assertNotContains('proxy.example.com', array_column($this->app->make(FakeBroker::class)->vhosts, 'domain'));
+    }
+
+    public function test_uninstalled_php_version_is_rejected(): void
+    {
+        $this->actingAs($this->admin());
+        Livewire::test(\App\Livewire\VhostsPage::class)
+            ->set('domain', 'shop.example.com')
+            ->set('root', '/data/www/shop.example.com')
+            ->set('type', 'php')
+            ->set('php_version', '9.9')
+            ->call('create')
+            ->assertSet('error', 'PHP version is not installed.');
+    }
+
+    public function test_web_root_outside_www_is_rejected(): void
+    {
+        $this->actingAs($this->admin());
+        Livewire::test(\App\Livewire\VhostsPage::class)
+            ->set('domain', 'shop.example.com')
+            ->set('root', '/etc/passwd')
+            ->set('type', 'php')
+            ->set('php_version', '8.4')
+            ->call('create');
+        $this->assertNotContains('shop.example.com', array_column($this->app->make(FakeBroker::class)->vhosts, 'domain'));
+    }
+
     public function test_sql_injection_db_name_rejected(): void
     {
         $this->actingAs($this->admin());

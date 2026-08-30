@@ -95,11 +95,14 @@ final class Config
     public function phpFpmSocket(string $version, ?Runtime $runtime = null): string
     {
         $paths = [
-            "/run/php/php{$version}-fpm.sock",
             '/run/php/php-fpm.sock',
+            "/run/php/php{$version}-fpm.sock",
             '/run/php-fpm/www.sock',
         ];
         foreach ($paths as $path) {
+            if (str_contains($path, 'lcmp-panel')) {
+                continue;
+            }
             $exists = $runtime !== null ? $runtime->fileExists($path) : is_file($path);
             if ($exists) {
                 return 'unix/' . $path;

@@ -103,10 +103,17 @@ final class PosixRuntime implements Runtime
             throw new BrokerException("Directory does not exist: {$dir}", 1);
         }
         if (@file_put_contents($path, $contents, LOCK_EX) === false) {
-            $hint = error_get_last()['message'] ?? 'file_put_contents failed';
-            throw new BrokerException("Unable to write {$path}. {$hint}", 1);
+            throw new BrokerException('Could not save the vhost configuration through the broker.', 1);
         }
         @chmod($path, $mode);
+    }
+
+    public function rename(string $from, string $to): void
+    {
+        if (!@rename($from, $to)) {
+            @unlink($from);
+            throw new BrokerException('Could not install the vhost configuration through the broker.', 1);
+        }
     }
 
     public function deleteFile(string $path): void

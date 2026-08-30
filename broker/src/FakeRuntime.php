@@ -83,6 +83,16 @@ final class FakeRuntime implements Runtime
         $this->dirs[dirname($path)] = true;
     }
 
+    public function rename(string $from, string $to): void
+    {
+        if (!isset($this->files[$from])) {
+            throw new BrokerException('Could not install the vhost configuration through the broker.', 1);
+        }
+        $this->files[$to] = $this->files[$from];
+        unset($this->files[$from]);
+        $this->dirs[dirname($to)] = true;
+    }
+
     public function deleteFile(string $path): void
     {
         unset($this->files[$path]);

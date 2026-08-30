@@ -27,42 +27,52 @@ final class VhostAdd
             $upstream = Validator::localUpstream((string) ($args[3] ?? ($input['upstream'] ?? '')));
         }
 
+        $this->assertNotManaged($domain, $config);
+
         $confPath = rtrim($config->caddyConfD, '/') . '/' . $domain . '.conf';
         if ($runtime->fileExists($confPath)) {
-            throw new BrokerException('A vhost config already exists for this domain.', 3);
+            throw new BrokerException("A vhost for {$domain} already exists.", 3);
         }
 
         $this->assertDomainFree($runtime, $config, $domain);
 
-        $contents = $this->render($config, $domain, $root, $type, $phpVersion, $upstream);
+        $contents = $this->render($runtime, $config, $domain, $root, $type, $phpVersion, $upstream);
 
         if (!$runtime->isDir($root)) {
             $runtime->mkdir($root, 0755);
             $runtime->chown($root, $config->phpUser, $config->phpGroup);
         }
 
-        $runtime->writeFile($confPath, $contents, 0644);
+        $tmp = $confPath . '.lcmp-tmp';
+        $runtime->writeFile($tmp, $contents, 0644);
+        try {
+            $runtime->rename($tmp, $confPath);
+        } catch (BrokerException $e) {
+            $runtime->deleteFile($tmp);
+            throw $e;
+        }
 
         $validate = $runtime->exec([$config->caddyBin, 'validate', '--config', $config->caddyfile], null, 20);
         if (!$validate->ok()) {
             $runtime->deleteFile($confPath);
+            $detail = trim($validate->stderr . "\n" . $validate->stdout);
+            $detail = preg_replace('#/etc/caddy/conf\.d/[^\s:]+#', 'the new vhost file', $detail) ?? $detail;
             throw new BrokerException(
-                'Caddy rejected the new vhost; the file was rolled back. ' . trim($validate->stderr . "\n" . $validate->stdout),
+                'Caddy rejected the config: ' . ($detail !== '' ? $detail : 'validation failed') . ' The new vhost was rolled back.',
                 1
             );
         }
 
         try {
             Systemd::applyCaddy($runtime);
-        } catch (BrokerException $e) {
+        } catch (BrokerException) {
             $runtime->deleteFile($confPath);
             try {
                 Systemd::applyCaddy($runtime);
             } catch (BrokerException) {
-                // best-effort restore of previous listener set
             }
             throw new BrokerException(
-                'Caddy reload/restart failed after adding the vhost; the file was rolled back. ' . $e->getMessage(),
+                'Caddy could not apply the new vhost; the file was rolled back. Existing sites were left serving.',
                 1
             );
         }
@@ -77,6 +87,14 @@ final class VhostAdd
         ];
     }
 
+    private function assertNotManaged(string $domain, Config $config): void
+    {
+        $blocked = array_map('strtolower', $config->readonlyVhosts);
+        if (in_array($domain, $blocked, true) || $domain === 'default' || $domain === 'lcmp-panel') {
+            throw new BrokerException("{$domain} is managed externally and can't be edited.", 3);
+        }
+    }
+
     private function assertDomainFree(Runtime $runtime, Config $config, string $domain): void
     {
         foreach ($runtime->glob(rtrim($config->caddyConfD, '/') . '/*.conf') as $file) {
@@ -85,13 +103,17 @@ final class VhostAdd
             } catch (\Throwable) {
                 continue;
             }
+            if ($parsed['readonly'] && (in_array($domain, $parsed['domains'], true) || $parsed['domain'] === $domain)) {
+                throw new BrokerException("{$domain} is managed externally and can't be edited.", 3);
+            }
             if (in_array($domain, $parsed['domains'], true) || $parsed['domain'] === $domain) {
-                throw new BrokerException('Domain is already present in ' . $file, 3);
+                throw new BrokerException("A vhost for {$domain} already exists.", 3);
             }
         }
     }
 
     private function render(
+        Runtime $runtime,
         Config $config,
         string $domain,
         string $root,

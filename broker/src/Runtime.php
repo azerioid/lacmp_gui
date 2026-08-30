@@ -11,6 +11,8 @@ interface Runtime
 
     public function writeFile(string $path, string $contents, int $mode = 0644): void;
 
+    public function rename(string $from, string $to): void;
+
     public function deleteFile(string $path): void;
 
     public function fileExists(string $path): bool;

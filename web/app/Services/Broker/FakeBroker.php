@@ -275,8 +275,11 @@ final class FakeBroker
         }
         $domain = $args[0] ?? '';
         foreach ($this->vhosts as $v) {
+            if (! empty($v['readonly']) && ($v['domain'] === $domain || in_array($domain, $v['domains'] ?? [], true))) {
+                throw new BrokerCallException($domain.' is managed externally and can\'t be edited.', 3);
+            }
             if ($v['domain'] === $domain || in_array($domain, $v['domains'] ?? [], true)) {
-                throw new BrokerCallException('Domain is already present.', 3);
+                throw new BrokerCallException('A vhost for '.$domain.' already exists.', 3);
             }
         }
         $row = [

@@ -106,6 +106,33 @@ final class VhostAddRollbackTest extends TestCase
         $this->assertNotSame(0, $code);
     }
 
+    public function test_prefers_lcmp_default_pool_socket_not_panel_pool(): void
+    {
+        $this->rt->files['/run/php/php-fpm.sock'] = '';
+        $this->rt->files['/run/php/lcmp-panel.sock'] = '';
+        $this->rt->script(['/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'], 0, 'Valid configuration');
+        $this->rt->script(['/usr/bin/systemctl', 'reload', 'caddy'], 0);
+
+        ob_start();
+        $code = $this->kernel->run(['broker', 'vhost.add', 'pool.example.com', '/data/www/pool.example.com', 'php', '8.4'], []);
+        ob_end_clean();
+        $this->assertSame(0, $code);
+        $conf = $this->rt->files['/etc/caddy/conf.d/pool.example.com.conf'];
+        $this->assertStringContainsString('php_fastcgi unix//run/php/php-fpm.sock', $conf);
+        $this->assertStringNotContainsString('lcmp-panel.sock', $conf);
+    }
+
+    public function test_refuses_readonly_domain_create(): void
+    {
+        $this->cfg->readonlyVhosts = ['projob.az'];
+        $this->kernel = new Kernel($this->cfg, $this->rt);
+        ob_start();
+        $code = $this->kernel->run(['broker', 'vhost.add', 'projob.az', '/data/www/projob.az', 'php', '8.4'], []);
+        $out = ob_get_clean();
+        $this->assertNotSame(0, $code);
+        $this->assertStringContainsString('managed externally', $out);
+    }
+
     public function test_rejects_duplicate_domain(): void
     {
         ob_start();

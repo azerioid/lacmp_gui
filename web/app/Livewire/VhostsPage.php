@@ -56,14 +56,14 @@ class VhostsPage extends Component
             }
             $res = $broker->call('vhost.add', $args);
             if (! $res->ok) {
-                $this->error = $res->error;
+                $this->error = $this->operatorMessage((string) $res->error);
                 return;
             }
-            $this->flash = "Created {$domain}. Caddy was validated and reloaded.";
+            $this->flash = "Created {$domain}.";
             $this->reset('domain', 'root', 'type', 'upstream', 'showForm');
             $this->reload($broker);
         } catch (\Throwable $e) {
-            $this->error = $e->getMessage();
+            $this->error = $this->operatorMessage($e->getMessage());
         }
     }
 
@@ -71,12 +71,21 @@ class VhostsPage extends Component
     {
         $res = $broker->call('vhost.del', [Validator::domain($domain)]);
         if (! $res->ok) {
-            $this->error = $res->error;
+            $this->error = $this->operatorMessage((string) $res->error);
         } else {
             $this->flash = "Deleted {$domain}. Website files were left in place.";
         }
         $this->confirmDelete = null;
         $this->reload($broker);
+    }
+
+    private function operatorMessage(string $raw): string
+    {
+        if (str_contains($raw, 'Unable to write') || str_contains($raw, 'open_basedir')) {
+            return 'Could not save the vhost. The broker must apply Caddy changes; re-run the installer if this persists.';
+        }
+
+        return (string) preg_replace('#/etc/caddy/conf\.d/\S+#', 'an existing vhost', $raw);
     }
 
     private function reload(BrokerClient $broker): void
