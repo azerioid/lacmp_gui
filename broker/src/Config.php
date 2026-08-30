@@ -92,9 +92,20 @@ final class Config
         return 'php' . $version . '-fpm';
     }
 
-    public function phpFpmSocket(string $version): string
+    public function phpFpmSocket(string $version, ?Runtime $runtime = null): string
     {
-        return 'unix//run/php/php' . $version . '-fpm.sock';
+        $paths = [
+            "/run/php/php{$version}-fpm.sock",
+            '/run/php/php-fpm.sock',
+            '/run/php-fpm/www.sock',
+        ];
+        foreach ($paths as $path) {
+            $exists = $runtime !== null ? $runtime->fileExists($path) : is_file($path);
+            if ($exists) {
+                return 'unix/' . $path;
+            }
+        }
+        return "unix//run/php/php{$version}-fpm.sock";
     }
 
     public function phpIniPath(string $version): string

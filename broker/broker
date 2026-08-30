@@ -1,45 +1,18 @@
-#!/usr/bin/env php
-<?php
-/**
- * LCMP Panel privileged broker.
- *
- * Enumerated actions only. Arguments are re-validated here. Commands are
- * executed as argv arrays via proc_open — never interpolated into a shell.
- *
- * Usage: broker <action> [arg ...]
- * Secrets (passwords) MUST be passed as JSON on stdin, never argv.
- */
-declare(strict_types=1);
-
-require __DIR__ . '/src/bootstrap.php';
-
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Kernel;
-use LcmpPanel\Broker\PosixRuntime;
-
-$configPath = getenv('LCMP_PANEL_CONFIG') ?: '/etc/lcmp-panel/broker.json';
-$runtime = new PosixRuntime();
-$config = Config::load($configPath, $runtime);
-$kernel = new Kernel($config, $runtime);
-
-$stdin = null;
-if (defined('STDIN') && is_resource(STDIN)) {
-    $raw = stream_get_contents(STDIN);
-    if (is_string($raw) && trim($raw) !== '') {
-        $decoded = json_decode($raw, true);
-        if (!is_array($decoded)) {
-            fwrite(STDOUT, json_encode([
-                'ok' => false,
-                'data' => null,
-                'error' => 'Stdin must be a JSON object when provided.',
-                'code' => 2,
-            ], JSON_UNESCAPED_SLASHES) . "\n");
-            exit(2);
-        }
-        $stdin = $decoded;
-    } else {
-        $stdin = [];
-    }
-}
-
-exit($kernel->run($argv, $stdin));
+#!/bin/bash
+# Privileged broker launcher. LCMP's CLI php.ini often sets open_basedir to
+# the www tree and disable_functions (proc_open). That would make this process
+# unable to write /etc/caddy or spawn caddy/systemctl even when sudo has
+# already given us root. Clear both for this invocation only.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PHP_BIN="${LCMP_BROKER_PHP:-}"
+if [[ -z "${PHP_BIN}" ]]; then
+    PHP_BIN="$(command -v php || true)"
+fi
+if [[ -z "${PHP_BIN}" || ! -x "${PHP_BIN}" ]]; then
+    PHP_BIN=/usr/bin/php
+fi
+exec "${PHP_BIN}" \
+    -d open_basedir= \
+    -d disable_functions= \
+    "${ROOT}/broker.php" "$@"

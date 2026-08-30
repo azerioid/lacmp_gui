@@ -395,7 +395,7 @@ fpm_ini() {
 
 echo "==> Installing LCMP Panel into ${PREFIX} (php ${PHP_VER}, user ${WEB_USER}, access ${ACCESS})"
 
-[[ -d "${ROOT}/broker/src" && -f "${ROOT}/broker/broker" && -d "${ROOT}/web" ]] || {
+[[ -d "${ROOT}/broker/src" && -f "${ROOT}/broker/broker" && -f "${ROOT}/broker/broker.php" && -d "${ROOT}/web" ]] || {
     echo "Repo layout incomplete (need broker/ and web/). Partial clone?" >&2
     exit 1
 }
@@ -669,6 +669,7 @@ chmod -R go-rwx "${PREFIX}/src"
 find "${PREFIX}/src" -type d -exec chmod 0750 {} \;
 find "${PREFIX}/src" -type f -exec chmod 0640 {} \;
 install -m 0750 -o root -g root "${ROOT}/broker/broker" "${PREFIX}/broker"
+install -m 0640 -o root -g root "${ROOT}/broker/broker.php" "${PREFIX}/broker.php"
 
 # --- sudoers (templated to the actual WEB_USER + PREFIX) ---------------------
 SUDOERS=/etc/sudoers.d/lcmp-panel

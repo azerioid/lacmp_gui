@@ -40,7 +40,20 @@ final class VhostAddRollbackTest extends TestCase
         $this->assertTrue($this->rt->isDir('/data/www/shop.example.com'));
     }
 
-    public function test_rolls_back_when_caddy_validate_fails(): void
+    public function test_reload_failure_falls_back_to_caddy_restart(): void
+    {
+        $this->rt->script(['/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'], 0, 'Valid configuration');
+        $this->rt->script(['/usr/bin/systemctl', 'reload', 'caddy'], 1, '', 'Job for caddy.service failed');
+        $this->rt->script(['/usr/bin/systemctl', 'restart', 'caddy'], 0);
+
+        ob_start();
+        $code = $this->kernel->run(['broker', 'vhost.add', 'shop2.example.com', '/data/www/shop2.example.com', 'php', '8.4'], []);
+        ob_end_clean();
+        $this->assertSame(0, $code);
+        $this->assertArrayHasKey('/etc/caddy/conf.d/shop2.example.com.conf', $this->rt->files);
+    }
+
+    public function test_rolls_back_when_validate_fails(): void
     {
         $this->rt->script(['/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'], 1, '', 'Error: invalid config');
 
@@ -58,6 +71,7 @@ final class VhostAddRollbackTest extends TestCase
     {
         $this->rt->script(['/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'], 0, 'Valid configuration');
         $this->rt->script(['/usr/bin/systemctl', 'reload', 'caddy'], 1, '', 'reload failed');
+        $this->rt->script(['/usr/bin/systemctl', 'restart', 'caddy'], 1, '', 'restart failed');
 
         ob_start();
         $code = $this->kernel->run(['broker', 'vhost.add', 'oops.example.com', '/data/www/oops.example.com', 'php', '8.4'], []);

@@ -103,7 +103,8 @@ final class PosixRuntime implements Runtime
             throw new BrokerException("Directory does not exist: {$dir}", 1);
         }
         if (@file_put_contents($path, $contents, LOCK_EX) === false) {
-            throw new BrokerException("Unable to write {$path}.", 1);
+            $hint = error_get_last()['message'] ?? 'file_put_contents failed';
+            throw new BrokerException("Unable to write {$path}. {$hint}", 1);
         }
         @chmod($path, $mode);
     }

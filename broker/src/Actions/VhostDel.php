@@ -40,14 +40,14 @@ final class VhostDel
         }
 
         try {
-            Systemd::control($runtime, 'reload', 'caddy');
+            Systemd::applyCaddy($runtime);
         } catch (BrokerException $e) {
             $runtime->writeFile($confPath, $backup, 0644);
             try {
-                Systemd::control($runtime, 'reload', 'caddy');
+                Systemd::applyCaddy($runtime);
             } catch (BrokerException) {
             }
-            throw new BrokerException('Caddy reload failed; the vhost file was restored. ' . $e->getMessage(), 1);
+            throw new BrokerException('Caddy reload/restart failed; the vhost file was restored. ' . $e->getMessage(), 1);
         }
 
         return [

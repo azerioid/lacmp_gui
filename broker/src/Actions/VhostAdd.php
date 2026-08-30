@@ -53,16 +53,16 @@ final class VhostAdd
         }
 
         try {
-            Systemd::control($runtime, 'reload', 'caddy');
+            Systemd::applyCaddy($runtime);
         } catch (BrokerException $e) {
             $runtime->deleteFile($confPath);
             try {
-                Systemd::control($runtime, 'reload', 'caddy');
+                Systemd::applyCaddy($runtime);
             } catch (BrokerException) {
-                // best-effort restore
+                // best-effort restore of previous listener set
             }
             throw new BrokerException(
-                'Caddy reload failed after adding the vhost; the file was rolled back. ' . $e->getMessage(),
+                'Caddy reload/restart failed after adding the vhost; the file was rolled back. ' . $e->getMessage(),
                 1
             );
         }
@@ -102,7 +102,7 @@ final class VhostAdd
         $phpBlock = '';
         $proxyBlock = '';
         if ($type === 'php' && $phpVersion !== null) {
-            $sock = $config->phpFpmSocket($phpVersion);
+            $sock = $config->phpFpmSocket($phpVersion, $runtime);
             $phpBlock = "    php_fastcgi {$sock}\n";
         }
         if ($type === 'proxy' && $upstream !== null) {
