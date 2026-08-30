@@ -17,5 +17,7 @@
         "user": "lcmp_panel_admin",
         "password": "CHANGE_ME"
     },
-    "readonly_vhosts": []
+    "readonly_vhosts": [],
+    "observed_services": []
 }
+

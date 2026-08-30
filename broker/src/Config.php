@@ -42,8 +42,8 @@ final class Config
     /** @var list<string> */
     public array $controllableServices = ['caddy', 'mariadb'];
 
-    /** @var list<string> observed only */
-    public array $observedServices = ['redis-server', 'redis'];
+    /** @var list<string> extra systemd units or host:port to observe (default empty) */
+    public array $observedServices = [];
 
     public static function load(string $path, Runtime $runtime): self
     {
@@ -72,6 +72,15 @@ final class Config
         $cfg->mysqlPassword = (string) ($data['mariadb']['password'] ?? $cfg->mysqlPassword);
         if (isset($data['readonly_vhosts']) && is_array($data['readonly_vhosts'])) {
             $cfg->readonlyVhosts = array_values(array_map('strval', $data['readonly_vhosts']));
+        }
+        if (isset($data['observed_services']) && is_array($data['observed_services'])) {
+            $cfg->observedServices = [];
+            foreach ($data['observed_services'] as $entry) {
+                $entry = trim((string) $entry);
+                if ($entry !== '') {
+                    $cfg->observedServices[] = $entry;
+                }
+            }
         }
         if (isset($data['logs']) && is_array($data['logs'])) {
             $cfg->logPaths = array_merge($cfg->logPaths, $data['logs']);

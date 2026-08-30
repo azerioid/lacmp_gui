@@ -18,7 +18,7 @@ class SmokePagesTest extends TestCase
 
         $this->get('/')->assertOk()
             ->assertSee('MariaDB is listening on 0.0.0.0:3306', false)
-            ->assertSee('RoadRunner (127.0.0.1:8000)', false)
+            ->assertDontSee('RoadRunner', false)
             ->assertSee('Caddy', false)
             ->assertSee('php8.2-fpm', false)
             ->assertSee('journalctl -xeu php8.2-fpm', false);

@@ -45,6 +45,18 @@ class Dashboard extends Component
 
     public function restartService(BrokerClient $broker, string $unit): void
     {
+        $allowed = [];
+        foreach ($this->status['controlled'] ?? [] as $row) {
+            if (! empty($row['controllable']) && isset($row['unit'])) {
+                $allowed[] = (string) $row['unit'];
+            }
+        }
+        if (! in_array($unit, $allowed, true)) {
+            $this->error = 'Service is not in the LCMP control allowlist.';
+            $this->confirmService = null;
+
+            return;
+        }
         $this->mutate($broker, 'service.restart', [$unit]);
         $this->confirmService = null;
     }

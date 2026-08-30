@@ -31,6 +31,7 @@
         @endforeach
     </div>
 
+    @if ($observed !== [])
     <div>
         <div class="mb-2 text-xs uppercase tracking-wide text-zinc-500">Observed (no control)</div>
         <div class="grid gap-3 sm:grid-cols-3">
@@ -45,6 +46,7 @@
             @endforeach
         </div>
     </div>
+    @endif
 
     @if ($pending)
         <div class="panel border border-warn/40 p-5">

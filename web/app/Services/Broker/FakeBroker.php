@@ -41,7 +41,7 @@ final class FakeBroker
                 'php_version' => null,
                 'type' => 'proxy',
                 'tls' => true,
-                'reverse_proxy' => '127.0.0.1:8000',
+                'reverse_proxy' => '127.0.0.1:3000',
                 'readonly' => true,
                 'enabled' => true,
                 'source' => '/etc/caddy/conf.d/projob.az.conf',
@@ -148,9 +148,6 @@ final class FakeBroker
             ],
             'observed' => [
                 $this->svc('redis-server') + ['controllable' => false],
-                ['unit' => 'roadrunner', 'id' => 'roadrunner', 'description' => 'RoadRunner (127.0.0.1:8000)', 'active_state' => 'active', 'sub_state' => 'running', 'running' => true, 'controllable' => false, 'bind_hint' => '127.0.0.1:8000'],
-                ['unit' => 'roadrunner-rpc', 'id' => 'roadrunner-rpc', 'description' => 'RoadRunner RPC (127.0.0.1:6001)', 'active_state' => 'active', 'sub_state' => 'running', 'running' => true, 'controllable' => false, 'bind_hint' => '127.0.0.1:6001'],
-                ['unit' => 'pong', 'id' => 'pong', 'description' => 'Node.js pong', 'active_state' => 'active', 'sub_state' => 'running', 'running' => true, 'controllable' => false, 'bind_hint' => '0.0.0.0:8080'],
             ],
             'warnings' => [[
                 'id' => 'mariadb_public_bind',

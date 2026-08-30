@@ -159,6 +159,7 @@ final class KernelDispatchTest extends TestCase
         $this->assertNotNull($failed);
         $this->assertSame('failed', $failed['active_state']);
         $this->assertStringContainsString('unable to bind listening socket', $failed['journal']);
+        $this->assertSame([], $json['data']['observed']);
     }
 
     public function test_audit_log_redacts_password(): void

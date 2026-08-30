@@ -690,6 +690,9 @@ GRANT ALL PRIVILEGES ON \`${PANEL_DB}\`.* TO '${PANEL_USER}'@'127.0.0.1';
 FLUSH PRIVILEGES;
 SQL
     umask 077
+    # observed_services: extra systemd units or 127.0.0.1:<port> to list as
+    # observed (no-control). Default []. Example:
+    #   "observed_services": ["custom-worker", "127.0.0.1:9000"]
     cat > /etc/lcmp-panel/broker.json <<EOF
 {
     "paths": {
@@ -710,7 +713,8 @@ SQL
         "user": "${ADMIN_USER}",
         "password": "${ADMIN_PASS}"
     },
-    "readonly_vhosts": ${READONLY_JSON}
+    "readonly_vhosts": ${READONLY_JSON},
+    "observed_services": []
 }
 EOF
     chmod 0600 /etc/lcmp-panel/broker.json
@@ -734,6 +738,7 @@ data["paths"]["caddy_confd"] = os.environ["LCMP_CADDY_CONFD"]
 data["paths"]["artisan"] = os.environ["LCMP_ARTISAN"]
 data["paths"]["panel_root"] = os.environ["LCMP_PREFIX"]
 data["web_user"] = os.environ["LCMP_WEB_USER"]
+data.setdefault("observed_services", [])
 path.write_text(json.dumps(data, indent=4) + "\n")
 PY
     chmod 0600 /etc/lcmp-panel/broker.json

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reverse install.sh. Never touches existing user sites, pong, Redis,
+# Reverse install.sh. Never touches existing user sites, Redis,
 # MariaDB server, or databases created through the panel.
 set -euo pipefail
 

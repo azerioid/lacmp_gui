@@ -3,10 +3,12 @@ declare(strict_types=1);
 
 namespace LcmpPanel\Broker\Actions;
 
+use LcmpPanel\Broker\CaddyParser;
 use LcmpPanel\Broker\Config;
 use LcmpPanel\Broker\ProcMetrics;
 use LcmpPanel\Broker\Runtime;
 use LcmpPanel\Broker\Systemd;
+use LcmpPanel\Broker\Validator;
 
 final class StatusAll
 {
@@ -21,36 +23,135 @@ final class StatusAll
             $controlled[] = $info;
         }
 
-        $observed = [];
-        foreach ($config->observedServices as $unit) {
-            $info = Systemd::show($runtime, $unit);
-            $info['controllable'] = false;
-            $observed[] = $info;
-        }
-
-        $observed[] = self::probePort($runtime, 'roadrunner', '127.0.0.1', 8000, 'RoadRunner (127.0.0.1:8000)');
-        $observed[] = self::probePort($runtime, 'roadrunner-rpc', '127.0.0.1', 6001, 'RoadRunner RPC (127.0.0.1:6001)');
-        $observed[] = self::probePort($runtime, 'pong', '0.0.0.0', 8080, 'listener :8080');
-
         return [
             'controlled' => $controlled,
-            'observed' => $observed,
+            'observed' => self::observed($runtime, $config),
             'warnings' => self::warnings($runtime, $config),
         ];
     }
 
-    private static function probePort(Runtime $runtime, string $id, string $bindHint, int $port, string $label): array
+    /** @return list<array<string,mixed>> */
+    private static function observed(Runtime $runtime, Config $config): array
     {
-        $listening = false;
-        foreach (['/proc/net/tcp', '/proc/net/tcp6'] as $path) {
-            if (!$runtime->fileExists($path)) {
+        $seen = [];
+        $out = [];
+
+        $push = static function (array $row) use (&$seen, &$out): void {
+            $key = (string) ($row['bind_hint'] ?? $row['unit'] ?? '');
+            if ($key === '' || isset($seen[$key])) {
+                return;
+            }
+            $seen[$key] = true;
+            $row['controllable'] = false;
+            $out[] = $row;
+        };
+
+        foreach (['redis-server', 'redis'] as $unit) {
+            if (!self::unitLoaded($runtime, $unit)) {
                 continue;
             }
+            $info = Systemd::show($runtime, $unit);
+            if (!($info['running'] ?? false)) {
+                continue;
+            }
+            $info['controllable'] = false;
+            $push($info);
+            break;
+        }
+
+        foreach (self::caddyUpstreams($runtime, $config) as $row) {
+            if ($row['running']) {
+                $push($row);
+            }
+        }
+
+        foreach ($config->observedServices as $entry) {
+            $entry = trim($entry);
+            if ($entry === '') {
+                continue;
+            }
+            if (self::isBindSpec($entry)) {
+                [$host, $port] = self::splitBind($entry);
+                $push(self::probePort($runtime, 'upstream-' . $host . '-' . $port, $host, $port, 'configured upstream ' . $host . ':' . $port));
+                continue;
+            }
+            if (!preg_match(Validator::SERVICE_PATTERN, $entry)) {
+                continue;
+            }
+            if (!self::unitLoaded($runtime, $entry)) {
+                continue;
+            }
+            $info = Systemd::show($runtime, $entry);
+            $info['controllable'] = false;
+            $push($info);
+        }
+
+        return $out;
+    }
+
+    /** @return list<array<string,mixed>> */
+    private static function caddyUpstreams(Runtime $runtime, Config $config): array
+    {
+        $byUpstream = [];
+        foreach ($runtime->glob(rtrim($config->caddyConfD, '/') . '/*.conf') as $file) {
+            if (basename($file) === 'lcmp-panel.conf' || basename($file) === 'default.conf') {
+                continue;
+            }
+            try {
+                $parsed = CaddyParser::parseFile($file, $runtime->readFile($file), $config->readonlyVhosts);
+            } catch (\Throwable) {
+                continue;
+            }
+            $proxy = $parsed['reverse_proxy'] ?? null;
+            if (!is_string($proxy) || !self::isBindSpec($proxy)) {
+                continue;
+            }
+            $label = (string) ($parsed['domain'] ?? basename($file, '.conf'));
+            $byUpstream[$proxy][] = $label;
+        }
+
+        $rows = [];
+        foreach ($byUpstream as $proxy => $labels) {
+            [$host, $port] = self::splitBind($proxy);
+            $desc = implode(', ', array_unique($labels)) . ' reverse-proxy upstream ' . $proxy;
+            $rows[] = self::probePort($runtime, 'upstream-' . $host . '-' . $port, $host, $port, $desc);
+        }
+        return $rows;
+    }
+
+    private static function unitLoaded(Runtime $runtime, string $unit): bool
+    {
+        $result = $runtime->exec(['/usr/bin/systemctl', 'show', $unit, '--property=LoadState', '--no-pager']);
+        return str_contains($result->stdout, 'LoadState=loaded');
+    }
+
+    private static function isBindSpec(string $spec): bool
+    {
+        return (bool) preg_match('/^(?:127\.0\.0\.1|0\.0\.0\.0|localhost):[1-9][0-9]{0,4}$/', $spec);
+    }
+
+    /** @return array{0: string, 1: int} */
+    private static function splitBind(string $spec): array
+    {
+        $spec = str_replace('localhost', '127.0.0.1', $spec);
+        [$host, $port] = explode(':', $spec, 2);
+        return [$host, (int) $port];
+    }
+
+    private static function probePort(Runtime $runtime, string $id, string $host, int $port, string $label): array
+    {
+        $listening = false;
+        if ($port >= 1 && $port <= 65535) {
             $hexPort = strtoupper(str_pad(dechex($port), 4, '0', STR_PAD_LEFT));
-            foreach (explode("\n", $runtime->readFile($path)) as $line) {
-                if (preg_match('/:[0-9A-F]*' . $hexPort . '\s+\S+\s+0A/i', $line)) {
-                    $listening = true;
-                    break 2;
+            foreach (['/proc/net/tcp', '/proc/net/tcp6'] as $path) {
+                if (!$runtime->fileExists($path)) {
+                    continue;
+                }
+                foreach (explode("\n", $runtime->readFile($path)) as $line) {
+                    if (preg_match('/:[0-9A-F]*' . $hexPort . '\s+\S+\s+0A/i', $line)) {
+                        $listening = true;
+                        break 2;
+                    }
                 }
             }
         }
@@ -62,7 +163,7 @@ final class StatusAll
             'sub_state' => $listening ? 'running' : 'dead',
             'running' => $listening,
             'controllable' => false,
-            'bind_hint' => $bindHint . ':' . $port,
+            'bind_hint' => $host . ':' . $port,
         ];
     }
 
