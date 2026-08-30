@@ -9,6 +9,12 @@ use LcmpPanel\Broker\Runtime;
 
 final class ApacheDriver implements WebServerDriver
 {
+    public const APACHE2_CONF = Config::APACHE2_CONF;
+    public const HTTPD_CONF = Config::HTTPD_CONF;
+    public const SITES_AVAILABLE = '/etc/apache2/sites-available';
+    public const SITES_ENABLED = '/etc/apache2/sites-enabled';
+    public const HTTPD_VHOST_DIR = '/etc/httpd/conf.d/vhost';
+
     public function __construct(private readonly Config $config)
     {
     }
@@ -211,9 +217,19 @@ final class ApacheDriver implements WebServerDriver
         ];
     }
 
+    public function mainConfigPath(Config $config): string
+    {
+        return $config->webService === 'httpd' ? self::HTTPD_CONF : self::APACHE2_CONF;
+    }
+
     private function validate(Runtime $runtime, Config $config): void
     {
         $ctl = $this->apacheCtl($runtime, $config);
+        foreach (array_merge($ctl, [$this->mainConfigPath($config), $config->vhostDir, $config->vhostAvailableDir]) as $token) {
+            if ($token !== '' && preg_match('/\s/', $token) === 1) {
+                throw new BrokerException("Apache path contains whitespace: '{$token}'", 1);
+            }
+        }
         $result = $runtime->exec(array_merge($ctl, ['-t']), null, 20);
         if (!$result->ok()) {
             $detail = trim($result->stderr . "\n" . $result->stdout);
@@ -237,7 +253,7 @@ final class ApacheDriver implements WebServerDriver
 
     private function debianLayout(Runtime $runtime, Config $config): bool
     {
-        return $runtime->isDir($config->vhostAvailableDir) || $runtime->isDir('/etc/apache2/sites-available');
+        return $runtime->isDir($config->vhostAvailableDir) || $runtime->isDir(self::SITES_AVAILABLE);
     }
 
     private function siteAvailablePath(Config $config, string $domain): string

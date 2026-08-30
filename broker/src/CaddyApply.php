@@ -27,7 +27,13 @@ final class CaddyApply
             throw new BrokerException('Invalid Caddy apply mode.', 2);
         }
 
-        $validate = $runtime->exec([$config->caddyBin, 'validate', '--config', $config->caddyfile], null, 20);
+        $caddyfile = Config::CADDYFILE;
+        Config::assertMainConfigPath($caddyfile, Config::CADDYFILE);
+        if (!$runtime->fileExists($caddyfile)) {
+            throw new BrokerException("Caddy main-config not found: {$caddyfile}", 1);
+        }
+
+        $validate = $runtime->exec([$config->caddyBin, 'validate', '--config', $caddyfile], null, 20);
         if (!$validate->ok()) {
             $detail = trim($validate->stderr . "\n" . $validate->stdout);
             throw new BrokerException(
@@ -37,7 +43,7 @@ final class CaddyApply
         }
 
         $adminEnabled = self::ensureIpv4Admin($runtime, $config);
-        $address = self::clientAddress(self::parseAdmin($runtime->readFile($config->caddyfile)));
+        $address = self::clientAddress(self::parseAdmin($runtime->readFile($caddyfile)));
         self::ensureReloadDropin($runtime, $config, $address);
 
         self::ensureActive($runtime);
@@ -62,7 +68,7 @@ final class CaddyApply
         return [
             'path' => $path,
             'address' => $address,
-            'admin_spec' => self::parseAdmin($runtime->readFile($config->caddyfile)),
+            'admin_spec' => self::parseAdmin($runtime->readFile($caddyfile)),
             'admin_enabled' => $adminEnabled,
         ];
     }
@@ -96,7 +102,7 @@ final class CaddyApply
 
     private static function ensureIpv4Admin(Runtime $runtime, Config $config): bool
     {
-        $text = $runtime->readFile($config->caddyfile);
+        $text = $runtime->readFile(Config::CADDYFILE);
         $spec = self::parseAdmin($text);
         if ($spec !== 'off' && $spec !== 'disabled') {
             return false;
@@ -117,10 +123,10 @@ final class CaddyApply
             }
         }
 
-        $runtime->writeFile($config->caddyfile, $patched, 0644);
-        $again = $runtime->exec([$config->caddyBin, 'validate', '--config', $config->caddyfile], null, 20);
+        $runtime->writeFile(Config::CADDYFILE, $patched, 0644);
+        $again = $runtime->exec([$config->caddyBin, 'validate', '--config', Config::CADDYFILE], null, 20);
         if (!$again->ok()) {
-            $runtime->writeFile($config->caddyfile, $text, 0644);
+            $runtime->writeFile(Config::CADDYFILE, $text, 0644);
             throw new BrokerException(
                 'Enabling Caddy admin 127.0.0.1:2019 failed validation; Caddyfile was restored. ' . trim($again->stderr . "\n" . $again->stdout),
                 1
@@ -147,7 +153,7 @@ final class CaddyApply
         }
         $body = "[Service]\n"
             . "ExecReload=\n"
-            . 'ExecReload=' . $config->caddyBin . ' reload --config ' . $config->caddyfile
+            . 'ExecReload=' . $config->caddyBin . ' reload --config ' . Config::CADDYFILE
             . ' --address ' . $address . " --force\n";
         $runtime->writeFile(self::DROPIN, $body, 0644);
         $runtime->exec(['/usr/bin/systemctl', 'daemon-reload'], null, 30);
@@ -196,7 +202,7 @@ final class CaddyApply
     private static function tryApi(Runtime $runtime, Config $config, string $address, bool $required): ?string
     {
         fwrite(STDERR, "==> Applying via Caddy admin API ({$address})\n");
-        $cmd = [$config->caddyBin, 'reload', '--config', $config->caddyfile, '--address', $address, '--force'];
+        $cmd = [$config->caddyBin, 'reload', '--config', Config::CADDYFILE, '--address', $address, '--force'];
         $result = $runtime->exec($cmd, null, 30);
         if ($result->ok()) {
             return 'api';

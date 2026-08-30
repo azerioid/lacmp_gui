@@ -11,6 +11,8 @@ use LcmpPanel\Broker\Runtime;
 
 final class CaddyDriver implements WebServerDriver
 {
+    public const CADDYFILE = Config::CADDYFILE;
+
     public function stackName(): string
     {
         return 'lcmp';
@@ -58,6 +60,8 @@ final class CaddyDriver implements WebServerDriver
         }
         $this->ensureAccessLog($runtime, $config, $domain);
 
+        $this->assertCaddyfile($runtime, $config);
+
         $tmp = $confPath . '.lcmp-tmp';
         $runtime->writeFile($tmp, $contents, 0644);
         try {
@@ -67,7 +71,7 @@ final class CaddyDriver implements WebServerDriver
             throw $e;
         }
 
-        $validate = $runtime->exec([$config->caddyBin, 'validate', '--config', $config->caddyfile], null, 20);
+        $validate = $runtime->exec([$config->caddyBin, 'validate', '--config', $this->mainConfigPath($config)], null, 20);
         if (!$validate->ok()) {
             $runtime->deleteFile($confPath);
             $detail = trim($validate->stderr . "\n" . $validate->stdout);
@@ -115,8 +119,9 @@ final class CaddyDriver implements WebServerDriver
             throw new BrokerException('This vhost is managed externally and cannot be deleted by the panel.', 3);
         }
 
+        $this->assertCaddyfile($runtime, $config);
         $runtime->deleteFile($confPath);
-        $validate = $runtime->exec([$config->caddyBin, 'validate', '--config', $config->caddyfile], null, 20);
+        $validate = $runtime->exec([$config->caddyBin, 'validate', '--config', $this->mainConfigPath($config)], null, 20);
         if (!$validate->ok()) {
             $runtime->writeFile($confPath, $contents, 0644);
             throw new BrokerException(
@@ -154,7 +159,21 @@ final class CaddyDriver implements WebServerDriver
 
     public function backupPaths(Config $config): array
     {
-        return [$config->caddyfile, $config->caddyConfD];
+        return [$this->mainConfigPath($config), $config->caddyConfD];
+    }
+
+    public function mainConfigPath(Config $config): string
+    {
+        return self::CADDYFILE;
+    }
+
+    private function assertCaddyfile(Runtime $runtime, Config $config): void
+    {
+        $path = $this->mainConfigPath($config);
+        Config::assertMainConfigPath($path, self::CADDYFILE);
+        if (!$runtime->fileExists($path)) {
+            throw new BrokerException("Caddy main-config not found: {$path}", 1);
+        }
     }
 
     public function version(Runtime $runtime, Config $config): array

@@ -15,7 +15,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREFIX="${PREFIX:-/usr/local/lib/lcmp-panel}"
 WWW_ROOT="${WWW_ROOT:-/data/www}"
 CADDY_CONFD="${CADDY_CONFD:-/etc/caddy/conf.d}"
-CADDYFILE="${CADDYFILE:-/etc/caddy/Caddy file}"
+CADDYFILE='/etc/caddy/Caddyfile'
 WEB_USER="${WEB_USER:-}"
 PHP_VER="${PHP_VER:-}"
 RESET_DB=0
@@ -118,6 +118,23 @@ detect_stack() {
         exit 1
     fi
     echo "==> Stack: ${STACK} (service ${WEB_SERVICE}, vhosts ${VHOST_DIR})"
+}
+
+# Main Caddy config is a single token. Never concatenate "Caddy"+"file".
+assert_caddyfile_path() {
+    local p="${1:-}"
+    if [[ -z "${p}" || "${p}" =~ [[:space:]] ]]; then
+        echo "Caddy main-config path is missing or contains whitespace: '${p}'. Expected /etc/caddy/Caddyfile" >&2
+        exit 1
+    fi
+    if [[ "${p}" != "/etc/caddy/Caddyfile" ]]; then
+        echo "Caddy main-config path must be /etc/caddy/Caddyfile (got '${p}')." >&2
+        exit 1
+    fi
+    if [[ ! -f "${p}" ]]; then
+        echo "Caddy main-config not found: ${p}" >&2
+        exit 1
+    fi
 }
 
 parse_bool() {
@@ -1033,6 +1050,7 @@ data["web_service"] = os.environ["LCMP_WEB_SERVICE"]
 data["vhost_format"] = os.environ["LCMP_VHOST_FORMAT"]
 data.setdefault("paths", {})["www_root"] = os.environ["LCMP_WWW_ROOT"]
 data["paths"]["caddy_confd"] = os.environ["LCMP_CADDY_CONFD"]
+data["paths"]["caddyfile"] = "/etc/caddy/Caddyfile"
 data["paths"]["artisan"] = os.environ["LCMP_ARTISAN"]
 data["paths"]["panel_root"] = os.environ["LCMP_PREFIX"]
 data["paths"]["vhost_dir"] = os.environ["LCMP_VHOST_DIR"]
@@ -1422,6 +1440,7 @@ https://{site} {{
 pathlib.Path(snippet).write_text("".join(parts))
 PY
     chmod 0644 "${SNIPPET}"
+    assert_caddyfile_path "${CADDYFILE}"
     if ! "${CADDY_BIN}" validate --config "${CADDYFILE}"; then
         rollback_panel_snippet "${SNIPPET}" "${BAK}"
         echo "Caddy validate failed; panel snippet was rolled back." >&2

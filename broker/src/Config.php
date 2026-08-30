@@ -5,9 +5,14 @@ namespace LcmpPanel\Broker;
 
 final class Config
 {
+    public const CADDYFILE = '/etc/caddy/Caddyfile';
+    public const CADDY_CONFD = '/etc/caddy/conf.d';
+    public const APACHE2_CONF = '/etc/apache2/apache2.conf';
+    public const HTTPD_CONF = '/etc/httpd/conf/httpd.conf';
+
     public string $wwwRoot = '/data/www';
-    public string $caddyConfD = '/etc/caddy/conf.d';
-    public string $caddyfile = '/etc/caddy/Caddyfile';
+    public string $caddyConfD = self::CADDY_CONFD;
+    public string $caddyfile = self::CADDYFILE;
     public string $caddyBin = '/usr/bin/caddy';
     public string $stack = 'lcmp';
     public string $webServer = 'caddy';
@@ -66,7 +71,10 @@ final class Config
         }
         $cfg->wwwRoot = (string) ($data['paths']['www_root'] ?? $cfg->wwwRoot);
         $cfg->caddyConfD = (string) ($data['paths']['caddy_confd'] ?? $cfg->caddyConfD);
-        $cfg->caddyfile = (string) ($data['paths']['caddyfile'] ?? $cfg->caddyfile);
+        $cfg->caddyfile = self::sanitizeExecPath(
+            (string) ($data['paths']['caddyfile'] ?? self::CADDYFILE),
+            self::CADDYFILE
+        );
         $cfg->caddyBin = (string) ($data['paths']['caddy_bin'] ?? $cfg->caddyBin);
         $cfg->stack = (string) ($data['stack'] ?? $cfg->stack);
         $cfg->webServer = (string) ($data['web_server'] ?? $cfg->webServer);
@@ -167,5 +175,25 @@ final class Config
             $list[] = $this->phpFpmService($ver);
         }
         return array_values(array_unique($list));
+    }
+
+    /** Paths passed to exec() must be a single token (no word-splitting). */
+    public static function sanitizeExecPath(string $path, string $fallback): string
+    {
+        $path = trim($path);
+        if ($path === '' || preg_match('/\s/', $path) === 1) {
+            return $fallback;
+        }
+        return $path;
+    }
+
+    public static function assertMainConfigPath(string $path, string $expected): void
+    {
+        if ($path !== $expected || preg_match('/\s/', $path) === 1) {
+            throw new BrokerException(
+                "Web-server main-config path is invalid (got '{$path}'; expected '{$expected}').",
+                1
+            );
+        }
     }
 }
