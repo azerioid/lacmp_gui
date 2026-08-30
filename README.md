@@ -38,8 +38,8 @@ All install logic is in `deploy/install.sh`.
 | **public + IP** | `https://<ip>:PORT` | Caddy `tls internal` (self-signed) | No DNS. Browser shows an untrusted-cert warning. Traffic is still encrypted. |
 
 Public mode **never** serves the panel over plaintext HTTP on a public interface.
-It always enables **mandatory TOTP**, a **fail2ban** jail on failed logins, and a
-firewall rule for the panel port.
+By default it also enables **TOTP**, a **fail2ban** jail, and a firewall rule
+(`--require-totp` / `--fail2ban` / `--firewall` can turn those off).
 
 ```bash
 # Tunnel only (explicit)
@@ -48,12 +48,18 @@ firewall rule for the panel port.
 # Public IP mode (self-signed HTTPS)
 ./lcmp_gui.sh --access=public --port=3169 --ip=203.0.113.10
 
-# Public IP, auto-detect address, optional allowlist
-./lcmp_gui.sh --access=public --port=3169 --allow-ip=203.0.113.0/24
+# Non-interactive (automation — must pass --domain or --ip in public mode)
+./lcmp_gui.sh --non-interactive --access=public --ip=203.0.113.10 --port=6969 --enable-ufw
+
+# Caddy apply: auto (default) probes the admin API, then systemctl reload, then restart
+./lcmp_gui.sh --caddy-reload=auto
+./lcmp_gui.sh --caddy-reload=none   # write+validate only; print the apply commands
 
 # Public domain mode (Let's Encrypt)
-./lcmp_gui.sh --access=public --domain=panel.example.com --port=3169 --email=you@example.com
+./lcmp_gui.sh --access=public --domain=panel.example.com --port=3169 --le-email=you@example.com
 ```
+
+`./lcmp_gui.sh --help` lists every flag and default.
 
 If ufw is installed but inactive, pass `--enable-ufw` so the installer can
 enable it **after** allowing SSH/22.
@@ -66,8 +72,14 @@ The SSH-tunnel path on `127.0.0.1:6969` stays available even after public mode.
 | `--domain=` / `--ip=` | Public HTTPS identity |
 | `--port=` | Public listen port (default 6969; not 80/443) |
 | `--allow-ip=` | Comma-list or repeatable CIDR allowlist |
-| `--email=` | ACME email (domain mode) |
+| `--email=` / `--le-email=` | ACME email (domain mode) |
+| `--caddy-reload=` | `auto` (default), `api`, `systemctl`, `restart`, `none` |
+| `--require-totp=` | `true`/`false` (default true) |
+| `--firewall=` / `--fail2ban=` | default true in public mode |
 | `--php=8.4` | PHP version (default: newest FPM) |
+| `--prefix=` / `--web-user=` | layout overrides |
+| `--non-interactive` | no prompts; public requires `--domain` or `--ip` |
+| `--dry-run` | print the plan; change nothing |
 | `--reset-db` | Rotate panel DB users (destructive) |
 | `--skip-caddy` | Do not write Caddy snippets |
 | `--enable-ufw` | Enable inactive ufw, keeping SSH |
@@ -153,6 +165,10 @@ cd web
 
 ## Troubleshooting
 
+- **Caddy admin API connection refused (`dial tcp [::1]:2019`):** the installer
+  now probes `127.0.0.1` first and falls back to `systemctl reload` then
+  `systemctl restart`. Re-run the installer; check the log line
+  `Caddy apply strategy` / `Applying via`.
 - **HTTP 500 on first request:** FPM could not write under `/usr/local/lib`
   (`ProtectSystem=full`). Re-run the installer (it writes the systemd drop-in
   and restarts FPM) or check `systemctl show phpX.Y-fpm -p ReadWritePaths`.

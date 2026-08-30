@@ -6,7 +6,7 @@
 # APP_KEY, or broker.json unless --reset-db is passed.
 set -euo pipefail
 
-if [[ ${EUID} -ne 0 ]]; then
+if [[ ${EUID} -ne 0 && "${1:-}" != "-h" && "${1:-}" != "--help" ]]; then
     echo "install.sh must run as root" >&2
     exit 1
 fi
@@ -19,7 +19,6 @@ CADDYFILE="${CADDYFILE:-/etc/caddy/Caddyfile}"
 WEB_USER="${WEB_USER:-}"
 PHP_VER="${PHP_VER:-}"
 RESET_DB=0
-# Plug-and-play: install the localhost tunnel snippet unless --skip-caddy.
 INSTALL_CADDY_SNIPPET=1
 ACCESS="${ACCESS:-}"
 PANEL_DOMAIN="${PANEL_DOMAIN:-}"
@@ -31,28 +30,66 @@ ENABLE_UFW=0
 SKIP_CADDY=0
 ALLOW_IPS=()
 EXTRA_READONLY=()
+CADDY_RELOAD="${CADDY_RELOAD:-auto}"
+REQUIRE_TOTP="${REQUIRE_TOTP:-}"
+DO_FIREWALL="${DO_FIREWALL:-}"
+DO_FAIL2BAN="${DO_FAIL2BAN:-}"
+NON_INTERACTIVE=0
+DRY_RUN=0
+
+parse_bool() {
+    case "$(echo "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes|on) echo true ;;
+        0|false|no|off) echo false ;;
+        *) echo ""; return 1 ;;
+    esac
+}
 
 usage() {
     cat <<'EOF'
-Usage: install.sh [options]
+Usage: lcmp_gui.sh [options]
+       deploy/install.sh [options]
 
-Access (default: tunnel — localhost + SSH):
-  --access=tunnel|public   tunnel = 127.0.0.1:6969 HTTP (SSH -L)
-                           public = HTTPS on --port (domain or IP)
-  --domain=panel.example.com   Let's Encrypt (recommended for public)
-  --ip=<addr>              IP mode + tls internal (self-signed warning)
-  --port=3169              public listen port (default: 6969)
-  --allow-ip=1.2.3.4,10.0.0.0/8   optional allowlist (repeatable)
-  --email=admin@example.com      ACME email (domain mode)
-  --enable-ufw             if ufw is inactive, enable it (SSH/22 first)
-  --readonly-vhost=name    extra read-only vhost (repeatable)
-  --skip-caddy             do not write Caddy snippets
-  --php=X.Y                PHP version (default: newest FPM)
-  --reset-db               rotate panel DB users (destructive)
+Access (default: tunnel — localhost 127.0.0.1:6969 + SSH):
+  --access=tunnel|public
+  --domain=<fqdn>              public domain mode (Let's Encrypt)
+  --ip=<addr>                  public IP mode (tls internal). Blank in
+                               interactive mode = auto-detect.
+  --port=<n>                   public listen port (default: 6969; not 80/443)
+  --allow-ip=<cidr[,cidr...]>  Caddy + firewall allowlist (repeatable)
+  --email=<addr>  --le-email=  Let's Encrypt account email (domain mode)
 
-  --install-caddy-snippet  accepted for compatibility (now the default)
+Caddy apply (default: auto):
+  --caddy-reload=auto|api|systemctl|restart|none
+      auto       probe admin API, else systemctl reload, else restart
+      api        admin API only (fail if unreachable)
+      systemctl  systemctl reload caddy
+      restart    systemctl restart caddy (brief connection drop)
+      none       write + validate snippet; print the apply command; do not apply
 
-Public mode implies HTTPS, mandatory TOTP, fail2ban, and a firewall rule.
+Security:
+  --require-totp=true|false    default true (always true-recommended in public)
+  --firewall=true|false        default true in public (ufw / firewalld)
+  --fail2ban=true|false        default true in public
+  --enable-ufw                 if ufw is inactive, enable it (SSH/22 first)
+  --readonly-vhost=<host>      extra read-only vhost (repeatable)
+
+Layout:
+  --prefix=<dir>               default /usr/local/lib/lcmp-panel
+  --web-user=<user>            default: Caddy unit user, else caddy, else www-data
+  --php=<X.Y>                  default: newest installed FPM
+
+Operational:
+  --non-interactive            no prompts; missing required values fail
+  --dry-run                    print planned actions; change nothing
+  --skip-caddy                 do not write Caddy snippets
+  --reset-db                   rotate panel DB users (destructive)
+  --install-caddy-snippet      compatibility (now the default)
+
+Public mode never serves plaintext HTTP on a public interface.
+--non-interactive --access=public requires --domain= or --ip=.
+
+Uninstall: deploy/uninstall.sh [--drop-db] [--php=X.Y]
 EOF
 }
 
@@ -60,15 +97,33 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --reset-db) RESET_DB=1; shift ;;
         --php=*) PHP_VER="${1#*=}"; shift ;;
+        --php) PHP_VER="${2:-}"; shift 2 ;;
+        --prefix=*) PREFIX="${1#*=}"; shift ;;
+        --prefix) PREFIX="${2:-}"; shift 2 ;;
+        --web-user=*) WEB_USER="${1#*=}"; shift ;;
+        --web-user) WEB_USER="${2:-}"; shift 2 ;;
         --install-caddy-snippet) INSTALL_CADDY_SNIPPET=1; shift ;;
         --skip-caddy) SKIP_CADDY=1; INSTALL_CADDY_SNIPPET=0; shift ;;
         --access=*) ACCESS="${1#*=}"; shift ;;
         --access) ACCESS="${2:-}"; shift 2 ;;
         --domain=*) PANEL_DOMAIN="${1#*=}"; shift ;;
+        --domain) PANEL_DOMAIN="${2:-}"; shift 2 ;;
         --ip=*) PANEL_IP="${1#*=}"; shift ;;
+        --ip) PANEL_IP="${2:-}"; shift 2 ;;
         --port=*) PANEL_PORT="${1#*=}"; shift ;;
+        --port) PANEL_PORT="${2:-}"; shift 2 ;;
         --email=*) LE_EMAIL="${1#*=}"; shift ;;
+        --email) LE_EMAIL="${2:-}"; shift 2 ;;
+        --le-email=*) LE_EMAIL="${1#*=}"; shift ;;
+        --le-email) LE_EMAIL="${2:-}"; shift 2 ;;
+        --caddy-reload=*) CADDY_RELOAD="${1#*=}"; shift ;;
+        --caddy-reload) CADDY_RELOAD="${2:-}"; shift 2 ;;
+        --require-totp=*) REQUIRE_TOTP="$(parse_bool "${1#*=}" || true)"; shift ;;
+        --firewall=*) DO_FIREWALL="$(parse_bool "${1#*=}" || true)"; shift ;;
+        --fail2ban=*) DO_FAIL2BAN="$(parse_bool "${1#*=}" || true)"; shift ;;
         --enable-ufw) ENABLE_UFW=1; shift ;;
+        --non-interactive) NON_INTERACTIVE=1; shift ;;
+        --dry-run) DRY_RUN=1; shift ;;
         --allow-ip=*)
             IFS=',' read -ra _extra <<< "${1#*=}"
             ALLOW_IPS+=("${_extra[@]}")
@@ -80,13 +135,22 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --readonly-vhost=*) EXTRA_READONLY+=("${1#*=}"); shift ;;
+        --readonly-vhost) EXTRA_READONLY+=("${2:-}"); shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
 done
 
+CADDY_RELOAD="$(echo "${CADDY_RELOAD}" | tr '[:upper:]' '[:lower:]')"
+case "${CADDY_RELOAD}" in
+    auto|api|systemctl|restart|none) ;;
+    *) echo "Invalid --caddy-reload=${CADDY_RELOAD} (use auto|api|systemctl|restart|none)" >&2; exit 2 ;;
+esac
+
 if [[ -z "${ACCESS}" ]]; then
-    if [[ -t 0 && -t 1 ]]; then
+    if [[ "${NON_INTERACTIVE}" -eq 1 ]]; then
+        ACCESS=tunnel
+    elif [[ -t 0 && -t 1 ]]; then
         echo "LCMP Panel installer"
         echo "  tunnel  — localhost ${TUNNEL_PORT} + SSH tunnel (default, safest)"
         echo "  public  — HTTPS on a port (domain = Let's Encrypt, or IP = self-signed)"
@@ -105,6 +169,18 @@ if [[ -z "${ACCESS}" ]]; then
             if [[ -n "${_a}" ]]; then
                 IFS=',' read -ra ALLOW_IPS <<< "${_a}"
             fi
+            read -r -p "Caddy apply [auto/api/systemctl/restart/none] (default: auto): " _r
+            CADDY_RELOAD="$(echo "${_r:-auto}" | tr '[:upper:]' '[:lower:]')"
+            read -r -p "Open firewall for the panel port? [Y/n]: " _f
+            [[ "${_f}" =~ ^[Nn] ]] && DO_FIREWALL=false || DO_FIREWALL=true
+            read -r -p "Install fail2ban jail for failed logins? [Y/n]: " _b
+            [[ "${_b}" =~ ^[Nn] ]] && DO_FAIL2BAN=false || DO_FAIL2BAN=true
+        fi
+        read -r -p "Require TOTP for admins? [Y/n]: " _t
+        if [[ "${_t}" =~ ^[Nn] ]]; then
+            REQUIRE_TOTP=false
+        else
+            REQUIRE_TOTP=true
         fi
     else
         ACCESS=tunnel
@@ -112,6 +188,23 @@ if [[ -z "${ACCESS}" ]]; then
 fi
 ACCESS="$(echo "${ACCESS}" | tr '[:upper:]' '[:lower:]')"
 [[ "${ACCESS}" == "tunnel" || "${ACCESS}" == "public" ]] || { echo "Invalid --access=${ACCESS}" >&2; exit 2; }
+
+if [[ "${ACCESS}" == "public" && -z "${REQUIRE_TOTP}" ]]; then
+    REQUIRE_TOTP=true
+fi
+REQUIRE_TOTP="${REQUIRE_TOTP:-true}"
+if [[ "${ACCESS}" == "public" ]]; then
+    DO_FIREWALL="${DO_FIREWALL:-true}"
+    DO_FAIL2BAN="${DO_FAIL2BAN:-true}"
+else
+    DO_FIREWALL="${DO_FIREWALL:-false}"
+    DO_FAIL2BAN="${DO_FAIL2BAN:-false}"
+fi
+
+if [[ "${NON_INTERACTIVE}" -eq 1 && "${ACCESS}" == "public" && -z "${PANEL_DOMAIN}" && -z "${PANEL_IP}" ]]; then
+    echo "--non-interactive --access=public requires --domain= or --ip= (refusing silent auto-detect)." >&2
+    exit 2
+fi
 
 if [[ "${SKIP_CADDY}" -eq 0 ]]; then
     INSTALL_CADDY_SNIPPET=1
@@ -332,6 +425,225 @@ done
 READONLY_LIST=("${_tmp[@]+"${_tmp[@]}"}")
 READONLY_JSON="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${READONLY_LIST[@]+"${READONLY_LIST[@]}"}")"
 
+caddy_admin_spec() {
+    python3 - "${CADDYFILE}" <<'PY'
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+if not path.is_file():
+    print("default")
+    raise SystemExit
+text = path.read_text(errors="replace")
+# First global options block only.
+m = re.search(r"(?ms)^\s*\{(.*?)\}", text)
+block = m.group(1) if m else ""
+for line in block.splitlines():
+    s = line.strip()
+    if s.startswith("admin "):
+        print(s.split(None, 1)[1].strip().strip('"'))
+        raise SystemExit
+print("default")
+PY
+}
+
+caddy_admin_probe() {
+    local spec url
+    spec="$(caddy_admin_spec)"
+    case "${spec}" in
+        off|disabled)
+            return 1
+            ;;
+        unix/*|unix://*)
+            local sock="${spec#unix//}"
+            sock="${sock#unix/}"
+            curl -fsS --max-time 2 --unix-socket "${sock}" http://localhost/config/ >/dev/null 2>&1
+            return $?
+            ;;
+        default|"")
+            curl -fsS --max-time 2 http://127.0.0.1:2019/config/ >/dev/null 2>&1 && return 0
+            curl -fsS --max-time 2 -g "http://[::1]:2019/config/" >/dev/null 2>&1
+            return $?
+            ;;
+        *)
+            url="${spec}"
+            [[ "${url}" == http://* || "${url}" == https://* ]] || url="http://${url}"
+            # Prefer IPv4 if the host is localhost (Caddy reload otherwise hits [::1]).
+            url="${url/localhost/127.0.0.1}"
+            curl -fsS --max-time 2 "${url%/}/config/" >/dev/null 2>&1
+            return $?
+            ;;
+    esac
+}
+
+caddy_admin_address_flag() {
+    local spec
+    spec="$(caddy_admin_spec)"
+    case "${spec}" in
+        off|disabled) echo "" ;;
+        default|"") echo "127.0.0.1:2019" ;;
+        unix/*|unix://*) echo "${spec}" ;;
+        *) echo "${spec/localhost/127.0.0.1}" ;;
+    esac
+}
+
+ensure_caddy_running() {
+    if systemctl is-active --quiet caddy; then
+        return 0
+    fi
+    echo "==> Caddy is not active; starting unit"
+    systemctl start caddy
+    sleep 1
+    if ! systemctl is-active --quiet caddy; then
+        echo "Could not start Caddy (systemctl start caddy failed)." >&2
+        return 1
+    fi
+}
+
+caddy_port_listening() {
+    local p="$1"
+    ss -tln 2>/dev/null | awk '{print $4}' | grep -Eq ":${p}$"
+}
+
+verify_caddy_healthy() {
+    local i
+    systemctl is-active --quiet caddy || return 1
+    if [[ "${INSTALL_CADDY_SNIPPET}" -ne 1 ]]; then
+        return 0
+    fi
+    for i in $(seq 1 25); do
+        if caddy_port_listening "${TUNNEL_PORT}"; then
+            if [[ "${ACCESS}" != "public" ]]; then
+                return 0
+            fi
+            if caddy_port_listening "${PANEL_PORT}"; then
+                return 0
+            fi
+        fi
+        sleep 0.3
+    done
+    echo "==> Listen check: tunnel ${TUNNEL_PORT}=$(caddy_port_listening "${TUNNEL_PORT}" && echo up || echo down) public ${PANEL_PORT}=$(caddy_port_listening "${PANEL_PORT}" && echo up || echo down)" >&2
+    return 1
+}
+
+rollback_panel_snippet() {
+    local snippet="$1" bak="$2"
+    if [[ -n "${bak}" && -f "${bak}" ]]; then
+        mv -f "${bak}" "${snippet}"
+        echo "==> Restored previous panel Caddy snippet"
+    else
+        rm -f "${snippet}"
+        echo "==> Removed new panel Caddy snippet (no previous snippet)"
+    fi
+}
+
+caddy_apply() {
+    local snippet="$1" bak="$2"
+    local addr rc=1
+
+    echo "==> Caddy apply strategy: ${CADDY_RELOAD}"
+
+    if [[ "${CADDY_RELOAD}" == "none" ]]; then
+        echo "Caddy snippet written and validated. Not applying (--caddy-reload=none)."
+        echo "Apply manually with one of:"
+        echo "  ${CADDY_BIN} reload --config ${CADDYFILE} --address 127.0.0.1:2019 --force"
+        echo "  systemctl reload caddy"
+        echo "  systemctl restart caddy"
+        return 0
+    fi
+
+    if ! ensure_caddy_running; then
+        rollback_panel_snippet "${snippet}" "${bak}"
+        return 1
+    fi
+
+    try_api() {
+        if ! caddy_admin_probe; then
+            echo "==> Caddy admin API not reachable; skipping API reload"
+            return 1
+        fi
+        addr="$(caddy_admin_address_flag)"
+        echo "==> Applying via Caddy admin API (${addr:-default})"
+        if [[ -n "${addr}" ]]; then
+            if sudo -n -u "${WEB_USER}" "${CADDY_BIN}" reload --config "${CADDYFILE}" --address "${addr}" --force; then
+                return 0
+            fi
+            if "${CADDY_BIN}" reload --config "${CADDYFILE}" --address "${addr}" --force; then
+                return 0
+            fi
+            return 1
+        fi
+        if sudo -n -u "${WEB_USER}" "${CADDY_BIN}" reload --config "${CADDYFILE}" --force; then
+            return 0
+        fi
+        "${CADDY_BIN}" reload --config "${CADDYFILE}" --force && return 0
+        return 1
+    }
+
+    try_reload_unit() {
+        echo "==> Applying via systemctl reload caddy"
+        systemctl reload caddy && return 0
+        return 1
+    }
+
+    try_restart_unit() {
+        echo "==> Applying via systemctl restart caddy (brief connection drop)"
+        systemctl restart caddy && return 0
+        return 1
+    }
+
+    case "${CADDY_RELOAD}" in
+        api)
+            try_api || return 1
+            ;;
+        systemctl)
+            try_reload_unit || return 1
+            ;;
+        restart)
+            try_restart_unit || return 1
+            ;;
+        auto)
+            if try_api; then
+                :
+            elif try_reload_unit; then
+                :
+            elif try_restart_unit; then
+                :
+            else
+                echo "All Caddy apply methods failed." >&2
+                return 1
+            fi
+            ;;
+    esac
+
+    if ! verify_caddy_healthy; then
+        echo "Caddy is not healthy after apply; rolling back the panel snippet." >&2
+        rollback_panel_snippet "${snippet}" "${bak}"
+        systemctl reload caddy 2>/dev/null || systemctl restart caddy 2>/dev/null || true
+        return 1
+    fi
+    return 0
+}
+
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+    echo "DRY-RUN — no files, packages, or services will be changed."
+    echo "  prefix:        ${PREFIX}"
+    echo "  web user:      ${WEB_USER}"
+    echo "  php:           ${PHP_VER}"
+    echo "  access:        ${ACCESS}"
+    echo "  port:          ${PANEL_PORT} (tunnel ${TUNNEL_PORT})"
+    echo "  domain/ip:     ${PANEL_DOMAIN:-}${PANEL_IP:-auto-if-interactive}"
+    echo "  caddy reload:  ${CADDY_RELOAD}"
+    echo "  require totp:  ${REQUIRE_TOTP}"
+    echo "  firewall:      ${DO_FIREWALL}"
+    echo "  fail2ban:      ${DO_FAIL2BAN}"
+    echo "  caddy snippet: ${CADDY_CONFD}/lcmp-panel.conf"
+    echo "  fpm pool:      $(pool_dir 2>/dev/null || echo unknown)/lcmp-panel.conf"
+    echo "  sudoers:       /etc/sudoers.d/lcmp-panel"
+    echo "  readonly:      ${READONLY_JSON}"
+    echo "  caddy admin:   $(caddy_admin_spec 2>/dev/null || echo unknown)"
+    echo "  caddy active:  $(systemctl is-active caddy 2>/dev/null || echo unknown)"
+    exit 0
+fi
+
 # --- layout / permissions ----------------------------------------------------
 # PREFIX 0751 root:root: web user can *traverse* into web/ but cannot list PREFIX
 # or read broker/src. Broker binary 0750 root:root. web/ owned by WEB_USER.
@@ -516,12 +828,12 @@ fi
 
 if [[ "${ACCESS}" == "public" ]]; then
     env_set "${PREFIX}/web/.env" SESSION_SECURE_COOKIE true
-    env_set "${PREFIX}/web/.env" PANEL_REQUIRE_TOTP true
+    env_set "${PREFIX}/web/.env" PANEL_REQUIRE_TOTP "${REQUIRE_TOTP}"
     env_set "${PREFIX}/web/.env" TRUSTED_PROXIES 127.0.0.1
 else
     env_set "${PREFIX}/web/.env" APP_URL "http://127.0.0.1:${TUNNEL_PORT}"
     env_set "${PREFIX}/web/.env" SESSION_SECURE_COOKIE false
-    env_set "${PREFIX}/web/.env" PANEL_REQUIRE_TOTP true
+    env_set "${PREFIX}/web/.env" PANEL_REQUIRE_TOTP "${REQUIRE_TOTP}"
     env_set "${PREFIX}/web/.env" TRUSTED_PROXIES 127.0.0.1
 fi
 chown "${WEB_USER}:${WEB_USER}" "${PREFIX}/web/.env"
@@ -830,17 +1142,18 @@ https://{site} {{
 pathlib.Path(snippet).write_text("".join(parts))
 PY
     chmod 0644 "${SNIPPET}"
-    if "${CADDY_BIN}" validate --config "${CADDYFILE}"; then
-        sudo -n -u "${WEB_USER}" "${CADDY_BIN}" reload --config "${CADDYFILE}" --force
-        rm -f "${BAK}"
-    else
-        if [[ -n "${BAK}" && -f "${BAK}" ]]; then
-            mv -f "${BAK}" "${SNIPPET}"
-        else
-            rm -f "${SNIPPET}"
-        fi
+    if ! "${CADDY_BIN}" validate --config "${CADDYFILE}"; then
+        rollback_panel_snippet "${SNIPPET}" "${BAK}"
         echo "Caddy validate failed; panel snippet was rolled back." >&2
         exit 1
+    fi
+    echo "Valid configuration"
+    if ! caddy_apply "${SNIPPET}" "${BAK}"; then
+        echo "Caddy apply failed after validate. Existing sites should still be served." >&2
+        exit 1
+    fi
+    if [[ "${CADDY_RELOAD}" != "none" ]]; then
+        rm -f "${BAK}"
     fi
 else
     echo "Caddy snippet skipped (--skip-caddy)."
@@ -857,12 +1170,12 @@ PANEL_ALLOW_IPS=${_ALLOW_CSV}
 EOF
 chmod 0640 /etc/lcmp-panel/access.env
 
-# --- firewall + fail2ban (public mode only) ---------------------------------
-if [[ "${ACCESS}" == "public" ]]; then
-    echo "==> Public mode: fail2ban + firewall for port ${PANEL_PORT}"
+# --- firewall + fail2ban (public mode defaults; overridable) ----------------
+if [[ "${DO_FAIL2BAN}" == "true" ]]; then
+    echo "==> fail2ban jail for panel failed logins"
     if command -v apt-get >/dev/null 2>&1; then
         export DEBIAN_FRONTEND=noninteractive
-        apt-get -y install fail2ban ufw >/dev/null
+        apt-get -y install fail2ban >/dev/null
     elif command -v dnf >/dev/null 2>&1; then
         dnf -y install fail2ban >/dev/null || true
     fi
@@ -882,22 +1195,26 @@ port     = ${PANEL_PORT}
 EOF
     systemctl enable --now fail2ban 2>/dev/null || true
     systemctl reload fail2ban 2>/dev/null || systemctl restart fail2ban 2>/dev/null || true
+fi
 
-    apply_panel_port_fw() {
-        if command -v ufw >/dev/null 2>&1; then
-            local ufw_status
-            ufw_status="$(ufw status 2>/dev/null | head -n1 || true)"
-            if echo "${ufw_status}" | grep -qi inactive; then
-                if [[ "${ENABLE_UFW}" -eq 1 ]]; then
-                    ufw allow OpenSSH >/dev/null 2>&1 || ufw allow 22/tcp >/dev/null 2>&1 || true
-                    echo y | ufw enable >/dev/null 2>&1 || true
-                else
-                    echo "Warning: ufw is inactive. Re-run with --enable-ufw (keeps SSH/22) or open port ${PANEL_PORT} yourself." >&2
-                    return 0
-                fi
+if [[ "${DO_FIREWALL}" == "true" ]]; then
+    echo "==> Firewall rule for panel port ${PANEL_PORT}"
+    if command -v apt-get >/dev/null 2>&1 && ! command -v ufw >/dev/null 2>&1; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get -y install ufw >/dev/null || true
+    fi
+    if command -v ufw >/dev/null 2>&1; then
+        ufw_status="$(ufw status 2>/dev/null | head -n1 || true)"
+        if echo "${ufw_status}" | grep -qi inactive; then
+            if [[ "${ENABLE_UFW}" -eq 1 ]]; then
+                ufw allow OpenSSH >/dev/null 2>&1 || ufw allow 22/tcp >/dev/null 2>&1 || true
+                echo y | ufw enable >/dev/null 2>&1 || true
+            else
+                echo "Warning: ufw is inactive. Re-run with --enable-ufw (keeps SSH/22) or open port ${PANEL_PORT} yourself." >&2
             fi
+        fi
+        if ! echo "$(ufw status 2>/dev/null | head -n1 || true)" | grep -qi inactive; then
             if [[ ${#ALLOW_IPS[@]} -gt 0 ]]; then
-                local cidr
                 for cidr in "${ALLOW_IPS[@]}"; do
                     ufw allow from "${cidr}" to any port "${PANEL_PORT}" proto tcp comment 'lcmp-panel' >/dev/null || true
                 done
@@ -905,15 +1222,14 @@ EOF
                 ufw allow "${PANEL_PORT}/tcp" comment 'lcmp-panel' >/dev/null || true
             fi
             echo "UFW_USED=1" >> /etc/lcmp-panel/access.env
-        elif command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active firewalld >/dev/null 2>&1; then
-            firewall-cmd --permanent --add-port="${PANEL_PORT}/tcp" >/dev/null
-            firewall-cmd --reload >/dev/null
-            echo "FIREWALLD_USED=1" >> /etc/lcmp-panel/access.env
-        else
-            echo "Warning: no ufw/firewalld; open TCP ${PANEL_PORT} on the host firewall." >&2
         fi
-    }
-    apply_panel_port_fw
+    elif command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active firewalld >/dev/null 2>&1; then
+        firewall-cmd --permanent --add-port="${PANEL_PORT}/tcp" >/dev/null
+        firewall-cmd --reload >/dev/null
+        echo "FIREWALLD_USED=1" >> /etc/lcmp-panel/access.env
+    else
+        echo "Warning: no ufw/firewalld; open TCP ${PANEL_PORT} on the host firewall." >&2
+    fi
 fi
 
 # Re-assert traversal vs. secrecy after every rsync/chown.

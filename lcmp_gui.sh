@@ -10,10 +10,7 @@
 #   chmod +x lcmp_gui.sh
 #   ./lcmp_gui.sh
 #
-# Flags are forwarded to deploy/install.sh:
-#   --access=tunnel|public
-#   --domain= --ip= --port= --allow-ip= --email=
-#   --php=8.4  --reset-db  --skip-caddy  --enable-ufw
+# Flags are forwarded to deploy/install.sh. Run ./lcmp_gui.sh --help
 #
 set -euo pipefail
 
@@ -27,19 +24,35 @@ ok()    { echo "${C_GRN}[OK]${C_RST} $*"; }
 warn()  { echo "${C_YLW}[!]${C_RST} $*"; }
 die()   { echo "${C_RED}[ERROR]${C_RST} $*" >&2; exit 1; }
 
-[[ "$(id -u)" -eq 0 ]] || die "This installer must be run as root."
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLER="${REPO_ROOT}/deploy/install.sh"
 
 if [[ ! -f "${INSTALLER}" ]]; then
-    die "deploy/install.sh is missing.
+    echo "deploy/install.sh is missing.
 
   This looks like a partial clone. Re-clone the full repository:
 
     git clone https://github.com/azerioid/lcmp_gui.git
-    cd lcmp_gui && chmod +x lcmp_gui.sh && ./lcmp_gui.sh"
+    cd lcmp_gui && chmod +x lcmp_gui.sh && ./lcmp_gui.sh" >&2
+    exit 1
 fi
+
+for _arg in "$@"; do
+    case "${_arg}" in
+        -h|--help)
+            exec bash "${INSTALLER}" --help
+            ;;
+    esac
+done
+
+[[ "$(id -u)" -eq 0 ]] || die "This installer must be run as root."
+
+DRY_RUN=0
+for _arg in "$@"; do
+    case "${_arg}" in
+        --dry-run) DRY_RUN=1 ;;
+    esac
+done
 
 # --------------------------------------------------------------------------
 # OS gate
@@ -135,7 +148,9 @@ fi
 # Build tools the worker (install.sh) assumes exist
 # --------------------------------------------------------------------------
 info "Ensuring git, unzip, curl, python3, php${PHP_VER}-cli, composer..."
-if [[ "$PKG_MGR" == "dnf" ]]; then
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+    warn "dry-run: skipping package installs"
+elif [[ "$PKG_MGR" == "dnf" ]]; then
     dnf -y install git unzip curl python3 rsync sudo \
         "php-cli" "php-xml" "php-mbstring" "php-mysqlnd" "php-json"
 else
@@ -147,16 +162,20 @@ else
         "php${PHP_VER}-bcmath"
 fi
 
-command -v php >/dev/null 2>&1 || die "php CLI is still missing after package install."
-command -v python3 >/dev/null 2>&1 || die "python3 is required by the installer."
+if [[ "${DRY_RUN}" -eq 0 ]]; then
+    command -v php >/dev/null 2>&1 || die "php CLI is still missing after package install."
+    command -v python3 >/dev/null 2>&1 || die "python3 is required by the installer."
 
-if ! command -v composer >/dev/null 2>&1; then
-    info "Installing Composer to /usr/local/bin/composer..."
-    curl -fsSL https://getcomposer.org/installer -o /tmp/composer-setup.php
-    php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer >/dev/null
-    rm -f /tmp/composer-setup.php
+    if ! command -v composer >/dev/null 2>&1; then
+        info "Installing Composer to /usr/local/bin/composer..."
+        curl -fsSL https://getcomposer.org/installer -o /tmp/composer-setup.php
+        php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer >/dev/null
+        rm -f /tmp/composer-setup.php
+    fi
+    ok "Build tools ready (php $(php -v | head -n1 | awk '{print $2}'), composer $(composer --version 2>/dev/null | awk '{print $3}'))"
+else
+    ok "dry-run: wrapper preflight complete (no packages installed)"
 fi
-ok "Build tools ready (php $(php -v | head -n1 | awk '{print $2}'), composer $(composer --version 2>/dev/null | awk '{print $3}'))"
 
 chmod +x "${INSTALLER}" "${REPO_ROOT}/deploy/uninstall.sh" "${REPO_ROOT}/broker/broker" 2>/dev/null || true
 
