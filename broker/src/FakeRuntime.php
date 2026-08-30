@@ -54,7 +54,8 @@ final class FakeRuntime implements Runtime
         $this->dirs['/usr/local/lib'] = true;
         $this->dirs['/usr/local/lib/lcmp-panel'] = true;
         $this->dirs['/usr/local/lib/lcmp-panel/web'] = true;
-        $this->dirs['/etc/cron.d'] = true;
+        $this->dirs['/etc/systemd'] = true;
+        $this->dirs['/etc/systemd/system'] = true;
     }
 
     public function exec(array $command, ?string $stdin = null, int $timeoutSeconds = 30): ExecResult

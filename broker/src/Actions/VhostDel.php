@@ -4,10 +4,10 @@ declare(strict_types=1);
 namespace LcmpPanel\Broker\Actions;
 
 use LcmpPanel\Broker\BrokerException;
+use LcmpPanel\Broker\CaddyApply;
 use LcmpPanel\Broker\CaddyParser;
 use LcmpPanel\Broker\Config;
 use LcmpPanel\Broker\Runtime;
-use LcmpPanel\Broker\Systemd;
 use LcmpPanel\Broker\Validator;
 
 final class VhostDel
@@ -40,20 +40,24 @@ final class VhostDel
         }
 
         try {
-            Systemd::applyCaddy($runtime);
+            $applied = CaddyApply::run($runtime, $config, 'auto');
         } catch (BrokerException $e) {
             $runtime->writeFile($confPath, $backup, 0644);
             try {
-                Systemd::applyCaddy($runtime);
+                CaddyApply::run($runtime, $config, 'auto');
             } catch (BrokerException) {
             }
-            throw new BrokerException('Caddy reload/restart failed; the vhost file was restored. ' . $e->getMessage(), 1);
+            throw new BrokerException(
+                'Caddy could not apply the deletion; the vhost file was restored. ' . $e->getMessage(),
+                1
+            );
         }
 
         return [
             'domain' => $domain,
             'deleted' => $confPath,
             'web_root_preserved' => $parsed['root'],
+            'apply' => $applied,
         ];
     }
 }

@@ -103,7 +103,7 @@ final class PosixRuntime implements Runtime
             throw new BrokerException("Directory does not exist: {$dir}", 1);
         }
         if (@file_put_contents($path, $contents, LOCK_EX) === false) {
-            throw new BrokerException('Could not save the vhost configuration through the broker.', 1);
+            throw new BrokerException(self::ioFailure('write', $path), 1);
         }
         @chmod($path, $mode);
     }
@@ -112,7 +112,7 @@ final class PosixRuntime implements Runtime
     {
         if (!@rename($from, $to)) {
             @unlink($from);
-            throw new BrokerException('Could not install the vhost configuration through the broker.', 1);
+            throw new BrokerException(self::ioFailure('install', $to), 1);
         }
     }
 
@@ -241,6 +241,20 @@ final class PosixRuntime implements Runtime
         $stmt = $this->pdo()->prepare($sql);
         $stmt->execute($params);
         return $stmt->rowCount();
+    }
+
+    private static function ioFailure(string $op, string $path): string
+    {
+        $last = error_get_last();
+        $msg = is_array($last) ? (string) ($last['message'] ?? '') : '';
+        if (str_contains($msg, 'open_basedir')) {
+            return 'Broker PHP is restricted by open_basedir and cannot ' . $op . ' Caddy config. Re-run the panel installer so the broker wrapper is installed.';
+        }
+        $leaf = basename($path);
+        if ($msg !== '') {
+            return 'Broker could not ' . $op . ' ' . $leaf . ': ' . $msg;
+        }
+        return 'Broker could not ' . $op . ' ' . $leaf . ' (permission denied or missing directory).';
     }
 
     private function pdo(): PDO

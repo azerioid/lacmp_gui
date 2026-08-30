@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace LcmpPanel\Broker;
 
 use LcmpPanel\Broker\Actions\AuthAudit;
+use LcmpPanel\Broker\Actions\CaddyApplyConfig;
 use LcmpPanel\Broker\Actions\BackupList;
 use LcmpPanel\Broker\Actions\BackupPrune;
 use LcmpPanel\Broker\Actions\BackupRestore;
@@ -55,6 +56,7 @@ final class Kernel
         'vhost.list' => VhostList::class,
         'vhost.add' => VhostAdd::class,
         'vhost.del' => VhostDel::class,
+        'caddy.apply' => CaddyApplyConfig::class,
         'db.list' => DbList::class,
         'db.add' => DbAdd::class,
         'db.del' => DbDel::class,

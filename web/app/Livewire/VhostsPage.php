@@ -81,8 +81,8 @@ class VhostsPage extends Component
 
     private function operatorMessage(string $raw): string
     {
-        if (str_contains($raw, 'Unable to write') || str_contains($raw, 'open_basedir')) {
-            return 'Could not save the vhost. The broker must apply Caddy changes; re-run the installer if this persists.';
+        if (str_contains($raw, 'open_basedir')) {
+            return 'Broker PHP is restricted by open_basedir. Re-run the panel installer so the broker wrapper is installed.';
         }
 
         return (string) preg_replace('#/etc/caddy/conf\.d/\S+#', 'an existing vhost', $raw);

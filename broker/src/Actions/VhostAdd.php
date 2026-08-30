@@ -4,10 +4,10 @@ declare(strict_types=1);
 namespace LcmpPanel\Broker\Actions;
 
 use LcmpPanel\Broker\BrokerException;
+use LcmpPanel\Broker\CaddyApply;
 use LcmpPanel\Broker\CaddyParser;
 use LcmpPanel\Broker\Config;
 use LcmpPanel\Broker\Runtime;
-use LcmpPanel\Broker\Systemd;
 use LcmpPanel\Broker\Validator;
 
 final class VhostAdd
@@ -64,15 +64,15 @@ final class VhostAdd
         }
 
         try {
-            Systemd::applyCaddy($runtime);
-        } catch (BrokerException) {
+            $applied = CaddyApply::run($runtime, $config, 'auto');
+        } catch (BrokerException $e) {
             $runtime->deleteFile($confPath);
             try {
-                Systemd::applyCaddy($runtime);
+                CaddyApply::run($runtime, $config, 'auto');
             } catch (BrokerException) {
             }
             throw new BrokerException(
-                'Caddy could not apply the new vhost; the file was rolled back. Existing sites were left serving.',
+                'Caddy could not apply the new vhost; the file was rolled back. Existing sites were left serving. ' . $e->getMessage(),
                 1
             );
         }
@@ -84,6 +84,7 @@ final class VhostAdd
             'php_version' => $phpVersion,
             'upstream' => $upstream,
             'source' => $confPath,
+            'apply' => $applied,
         ];
     }
 

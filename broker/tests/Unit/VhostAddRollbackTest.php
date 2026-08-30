@@ -27,30 +27,43 @@ final class VhostAddRollbackTest extends TestCase
     public function test_adds_php_vhost_after_validate_and_reload(): void
     {
         $this->rt->script(['/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'], 0, 'Valid configuration');
-        $this->rt->script(['/usr/bin/systemctl', 'reload', 'caddy'], 0);
 
         ob_start();
         $code = $this->kernel->run(['broker', 'vhost.add', 'shop.example.com', '/data/www/shop.example.com', 'php', '8.4'], []);
-        ob_end_clean();
+        $out = ob_get_clean();
         $this->assertSame(0, $code);
         $this->assertArrayHasKey('/etc/caddy/conf.d/shop.example.com.conf', $this->rt->files);
         $conf = $this->rt->files['/etc/caddy/conf.d/shop.example.com.conf'];
         $this->assertStringContainsString('php_fastcgi unix//run/php/php8.4-fpm.sock', $conf);
         $this->assertStringContainsString('root * /data/www/shop.example.com', $conf);
         $this->assertTrue($this->rt->isDir('/data/www/shop.example.com'));
+        $decoded = json_decode($out, true);
+        $this->assertSame('api', $decoded['data']['apply']['path']);
+        $this->assertSame('127.0.0.1:2019', $decoded['data']['apply']['address']);
+        $this->assertStringContainsString('admin 127.0.0.1:2019', $this->rt->files['/etc/caddy/Caddyfile']);
+        $usedIpv4Reload = false;
+        foreach ($this->rt->execLog as $e) {
+            if (($e['command'][1] ?? '') === 'reload' && in_array('127.0.0.1:2019', $e['command'], true)) {
+                $usedIpv4Reload = true;
+            }
+        }
+        $this->assertTrue($usedIpv4Reload);
     }
 
     public function test_reload_failure_falls_back_to_caddy_restart(): void
     {
         $this->rt->script(['/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'], 0, 'Valid configuration');
+        $this->rt->script(['/usr/bin/caddy', 'reload', '--config', '/etc/caddy/Caddyfile', '--address', '127.0.0.1:2019', '--force'], 1, '', 'connection refused');
         $this->rt->script(['/usr/bin/systemctl', 'reload', 'caddy'], 1, '', 'Job for caddy.service failed');
         $this->rt->script(['/usr/bin/systemctl', 'restart', 'caddy'], 0);
 
         ob_start();
         $code = $this->kernel->run(['broker', 'vhost.add', 'shop2.example.com', '/data/www/shop2.example.com', 'php', '8.4'], []);
-        ob_end_clean();
+        $out = ob_get_clean();
         $this->assertSame(0, $code);
         $this->assertArrayHasKey('/etc/caddy/conf.d/shop2.example.com.conf', $this->rt->files);
+        $decoded = json_decode($out, true);
+        $this->assertSame('restart', $decoded['data']['apply']['path']);
     }
 
     public function test_rolls_back_when_validate_fails(): void
@@ -70,16 +83,18 @@ final class VhostAddRollbackTest extends TestCase
     public function test_rolls_back_when_reload_fails(): void
     {
         $this->rt->script(['/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'], 0, 'Valid configuration');
+        $this->rt->script(['/usr/bin/caddy', 'reload', '--config', '/etc/caddy/Caddyfile', '--address', '127.0.0.1:2019', '--force'], 1, '', 'connection refused');
         $this->rt->script(['/usr/bin/systemctl', 'reload', 'caddy'], 1, '', 'reload failed');
         $this->rt->script(['/usr/bin/systemctl', 'restart', 'caddy'], 1, '', 'restart failed');
 
         ob_start();
         $code = $this->kernel->run(['broker', 'vhost.add', 'oops.example.com', '/data/www/oops.example.com', 'php', '8.4'], []);
-        ob_end_clean();
+        $out = ob_get_clean();
 
         $this->assertNotSame(0, $code);
         $this->assertArrayNotHasKey('/etc/caddy/conf.d/oops.example.com.conf', $this->rt->files);
         $this->assertArrayHasKey('/etc/caddy/conf.d/projob.az.conf', $this->rt->files);
+        $this->assertStringContainsString('All Caddy apply methods failed', $out);
     }
 
     public function test_refuses_to_delete_projob(): void
@@ -111,7 +126,6 @@ final class VhostAddRollbackTest extends TestCase
         $this->rt->files['/run/php/php-fpm.sock'] = '';
         $this->rt->files['/run/php/lcmp-panel.sock'] = '';
         $this->rt->script(['/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'], 0, 'Valid configuration');
-        $this->rt->script(['/usr/bin/systemctl', 'reload', 'caddy'], 0);
 
         ob_start();
         $code = $this->kernel->run(['broker', 'vhost.add', 'pool.example.com', '/data/www/pool.example.com', 'php', '8.4'], []);

@@ -59,11 +59,11 @@ Access (default: tunnel — localhost 127.0.0.1:6969 + SSH):
   --allow-ip=<cidr[,cidr...]>  Caddy + firewall allowlist (repeatable)
   --email=<addr>  --le-email=  Let's Encrypt account email (domain mode)
 
-Caddy apply (default: auto):
+Caddy apply (default: auto; same ladder as the broker / UI vhost add):
   --caddy-reload=auto|api|systemctl|restart|none
-      auto       probe admin API, else systemctl reload, else restart
-      api        admin API only (fail if unreachable)
-      systemctl  systemctl reload caddy
+      auto       API at 127.0.0.1:2019, else systemctl reload, else restart
+      api        admin API only (explicit IPv4; never localhost)
+      systemctl  systemctl reload caddy (drop-in uses --address 127.0.0.1:2019)
       restart    systemctl restart caddy (brief connection drop)
       none       write + validate snippet; print the apply command; do not apply
 
@@ -535,15 +535,31 @@ rollback_panel_snippet() {
     fi
 }
 
+broker_caddy_apply() {
+    local payload out rc=0
+    payload="$(python3 -c 'import json,os; print(json.dumps({"mode":os.environ["M"],"expect_ports":[int(p) for p in os.environ["P"].split(",") if p.strip()]}))')"
+    set +e
+    out="$("${PREFIX}/broker" caddy.apply <<<"${payload}")"
+    rc=$?
+    set -e
+    printf '%s\n' "${out}"
+    if [[ "${rc}" -ne 0 ]]; then
+        return 1
+    fi
+    python3 -c 'import json,sys; raw=sys.stdin.read().strip();
+raise SystemExit(1 if not raw else (0 if json.loads(raw).get("ok") else 1))' <<<"${out}"
+}
+
 caddy_apply() {
     local snippet="$1" bak="$2"
-    local addr rc=1
+    local ports="${TUNNEL_PORT}"
 
-    echo "==> Caddy apply strategy: ${CADDY_RELOAD}"
+    echo "==> Caddy apply strategy: ${CADDY_RELOAD} (shared broker caddy.apply)"
 
     if [[ "${CADDY_RELOAD}" == "none" ]]; then
         echo "Caddy snippet written and validated. Not applying (--caddy-reload=none)."
         echo "Apply manually with one of:"
+        echo "  ${PREFIX}/broker caddy.apply   # stdin: {\"mode\":\"auto\",\"expect_ports\":[${TUNNEL_PORT}]}"
         echo "  ${CADDY_BIN} reload --config ${CADDYFILE} --address 127.0.0.1:2019 --force"
         echo "  systemctl reload caddy"
         echo "  systemctl restart caddy"
@@ -555,69 +571,26 @@ caddy_apply() {
         return 1
     fi
 
-    try_api() {
-        if ! caddy_admin_probe; then
-            echo "==> Caddy admin API not reachable; skipping API reload"
-            return 1
-        fi
-        addr="$(caddy_admin_address_flag)"
-        echo "==> Applying via Caddy admin API (${addr:-default})"
-        if [[ -n "${addr}" ]]; then
-            if sudo -n -u "${WEB_USER}" "${CADDY_BIN}" reload --config "${CADDYFILE}" --address "${addr}" --force; then
-                return 0
-            fi
-            if "${CADDY_BIN}" reload --config "${CADDYFILE}" --address "${addr}" --force; then
-                return 0
-            fi
-            return 1
-        fi
-        if sudo -n -u "${WEB_USER}" "${CADDY_BIN}" reload --config "${CADDYFILE}" --force; then
-            return 0
-        fi
-        "${CADDY_BIN}" reload --config "${CADDYFILE}" --force && return 0
-        return 1
-    }
+    if [[ "${ACCESS}" == "public" && -n "${PANEL_PORT}" && "${PANEL_PORT}" != "${TUNNEL_PORT}" ]]; then
+        ports="${TUNNEL_PORT},${PANEL_PORT}"
+    fi
 
-    try_reload_unit() {
-        echo "==> Applying via systemctl reload caddy"
-        systemctl reload caddy && return 0
+    export M="${CADDY_RELOAD}" P="${ports}"
+    if ! broker_caddy_apply; then
+        echo "Caddy apply failed via broker; rolling back the panel snippet." >&2
+        rollback_panel_snippet "${snippet}" "${bak}"
+        export M=auto P=""
+        broker_caddy_apply >/dev/null 2>&1 || true
         return 1
-    }
-
-    try_restart_unit() {
-        echo "==> Applying via systemctl restart caddy (brief connection drop)"
-        systemctl restart caddy && return 0
-        return 1
-    }
-
-    case "${CADDY_RELOAD}" in
-        api)
-            try_api || return 1
-            ;;
-        systemctl)
-            try_reload_unit || return 1
-            ;;
-        restart)
-            try_restart_unit || return 1
-            ;;
-        auto)
-            if try_api; then
-                :
-            elif try_reload_unit; then
-                :
-            elif try_restart_unit; then
-                :
-            else
-                echo "All Caddy apply methods failed." >&2
-                return 1
-            fi
-            ;;
-    esac
+    fi
+    unset M P
 
     if ! verify_caddy_healthy; then
         echo "Caddy is not healthy after apply; rolling back the panel snippet." >&2
         rollback_panel_snippet "${snippet}" "${bak}"
-        systemctl reload caddy 2>/dev/null || systemctl restart caddy 2>/dev/null || true
+        export M=auto P=""
+        broker_caddy_apply >/dev/null 2>&1 || true
+        unset M P
         return 1
     fi
     return 0

@@ -72,16 +72,12 @@ final class Systemd
     }
 
     /**
-     * LCMP often sets `admin off`, so `systemctl reload caddy` (ExecReload =
-     * caddy reload → localhost:2019) fails. Restart still loads the new config.
+     * @param  list<int>  $expectPorts
+     * @return array{path: string, address: string, admin_spec: string, admin_enabled: bool}
      */
-    public static function applyCaddy(Runtime $runtime): array
+    public static function applyCaddy(Runtime $runtime, Config $config, string $mode = 'auto', array $expectPorts = []): array
     {
-        try {
-            return self::control($runtime, 'reload', 'caddy');
-        } catch (BrokerException) {
-            return self::control($runtime, 'restart', 'caddy');
-        }
+        return CaddyApply::run($runtime, $config, $mode, $expectPorts);
     }
 
     public static function statusRaw(Runtime $runtime, string $unit): string

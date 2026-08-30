@@ -100,11 +100,44 @@ SNIPPET=/etc/caddy/conf.d/lcmp-panel.conf
 if [[ -f "${SNIPPET}" ]]; then
     rm -f "${SNIPPET}"
     if /usr/bin/caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
-        sudo -n -u "${WEB_USER}" /usr/bin/caddy reload --config /etc/caddy/Caddyfile --force 2>/dev/null \
+        sudo -n -u "${WEB_USER}" /usr/bin/caddy reload --config /etc/caddy/Caddyfile --address 127.0.0.1:2019 --force 2>/dev/null \
+            || /usr/bin/caddy reload --config /etc/caddy/Caddyfile --address 127.0.0.1:2019 --force 2>/dev/null \
             || true
     else
         echo "Warning: caddy validate failed after removing the panel snippet." >&2
     fi
+fi
+
+rm -f /etc/systemd/system/caddy.service.d/lcmp-panel-reload.conf
+if [[ -d /etc/systemd/system/caddy.service.d ]] && [[ -z "$(ls -A /etc/systemd/system/caddy.service.d 2>/dev/null || true)" ]]; then
+    rmdir /etc/systemd/system/caddy.service.d 2>/dev/null || true
+fi
+if [[ -f /etc/lcmp-panel/caddy-admin-managed ]]; then
+    python3 - /etc/caddy/Caddyfile <<'PY'
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+if not path.is_file():
+    raise SystemExit
+text = path.read_text()
+new, n = re.subn(
+    r"^(\s*admin\s+)127\.0\.0\.1:2019(\s*)$",
+    r"\1off\2",
+    text,
+    count=1,
+    flags=re.M,
+)
+new = re.sub(r"\n\s*# lcmp-panel: IPv4 admin[^\n]*", "", new, count=1)
+if n:
+    path.write_text(new)
+    print("Restored Caddy admin off (panel-managed)")
+PY
+    rm -f /etc/lcmp-panel/caddy-admin-managed
+    if /usr/bin/caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+        systemctl restart caddy 2>/dev/null || true
+    fi
+fi
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload 2>/dev/null || true
 fi
 
 if [[ -n "${PHP_VER}" ]]; then
