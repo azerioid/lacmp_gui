@@ -2,7 +2,7 @@
 
 A web control plane for [teddysun/lcmp](https://github.com/teddysun/lcmp)
 (Linux + **Caddy** + MariaDB + PHP) and [teddysun/lamp](https://github.com/teddysun/lamp)
-(Linux + **Apache** + MariaDB + PHP). The `lacmp` / `lamp` CLI stays the source of
+(Linux + **Apache** + MariaDB + PHP). The `lcmp` / `lamp` CLI stays the source of
 truth; this panel is a scoped, authenticated UI in front of it.
 
 The panel is **control-plane infrastructure**, not a user site. It installs
@@ -12,7 +12,7 @@ share `:80`/`:443` — install **one** stack per host.
 ## Prerequisites
 
 - A supported OS: Ubuntu 22.04/24.04, Debian 11–13, or EL 8/9/10
-- **LACMP or LAMP already installed** (`lacmp` or `lamp` on PATH, plus MariaDB,
+- **LCMP or LAMP already installed** (`lcmp` or `lamp` on PATH, plus MariaDB,
   PHP-FPM, and Caddy *or* Apache). This installer will not install, stop, or
   reconfigure the stack, existing vhosts, MariaDB data, Redis, or your sites.
 
@@ -22,7 +22,7 @@ options (`teddysun/lcmp` and `teddysun/lamp`).
 ## Default install (optional extras)
 
 ```bash
-# as root, on the LACMP or LAMP host
+# as root, on the LCMP or LAMP host
 git clone https://github.com/azerioid/lacmp_gui.git
 cd lacmp_gui
 chmod +x lacmp_gui.sh
@@ -31,7 +31,7 @@ chmod +x lacmp_gui.sh
 
 With **no flags**:
 
-- Preflight checks for **`lacmp` or `lamp`** (and Caddy or Apache, MariaDB, PHP-FPM)
+- Preflight checks for **`lcmp` or `lamp`** (and Caddy or Apache, MariaDB, PHP-FPM)
 - Stack is **`--stack=auto`**: prefer the web server bound to `:80`/`:443`
 - Access is **tunnel** — `127.0.0.1:3169` only (SSH `-L`). Public HTTPS is
   **optional** (`--access=public`)
@@ -49,21 +49,21 @@ All install logic is in `deploy/install.sh`.
 | Mode | How you reach it | TLS | When to use |
 | --- | --- | --- | --- |
 | **tunnel** (default) | `ssh -L 3169:127.0.0.1:3169 user@host` then `http://127.0.0.1:3169` | localhost HTTP only | Safest. No public listener. |
-| **public + domain** (optional) | `https://panel.example.com:PORT` | LACMP: Caddy ACME. LAMP: certbot on 443, else self-signed | DNS A record required. |
-| **public + IP** (optional) | `https://<ip>:PORT` | LACMP: Caddy `tls internal`. LAMP: openssl self-signed | Browser shows an untrusted-cert warning. Traffic is still encrypted. |
+| **public + domain** (optional) | `https://panel.example.com:PORT` | LCMP: Caddy ACME. LAMP: certbot on 443, else self-signed | DNS A record required. |
+| **public + IP** (optional) | `https://<ip>:PORT` | LCMP: Caddy `tls internal`. LAMP: openssl self-signed | Browser shows an untrusted-cert warning. Traffic is still encrypted. |
 
 Public mode **never** serves the panel over plaintext HTTP on a public interface.
 By default it also enables **TOTP**, a **fail2ban** jail, and a firewall rule
 (`--require-totp` / `--fail2ban` / `--firewall` can turn those off).
 
 ```bash
-# Default: detect lacmp vs lamp, tunnel on 3169
+# Default: detect lcmp vs lamp, tunnel on 3169
 ./lacmp_gui.sh
 
 # Explicit tunnel
 ./lacmp_gui.sh --access=tunnel --stack=auto
 
-# Force Apache (LAMP) or Caddy (LACMP)
+# Force Apache (LAMP) or Caddy (LCMP)
 ./lacmp_gui.sh --stack=lamp
 ./lacmp_gui.sh --stack=lcmp
 
@@ -194,7 +194,7 @@ cd web
 
 ## Troubleshooting
 
-- **Neither lacmp nor lamp:** install [teddysun/lcmp](https://github.com/teddysun/lcmp)
+- **Neither lcmp nor lamp:** install [teddysun/lcmp](https://github.com/teddysun/lcmp)
   or [teddysun/lamp](https://github.com/teddysun/lamp) first, then re-run
   `./lacmp_gui.sh`.
 - **Both commands present:** `--stack=auto` uses whoever is on `:80`/`:443`, or
