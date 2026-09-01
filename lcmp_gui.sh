@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # lcmp_gui.sh — thin preflight wrapper for LCMP Panel.
-# Repo: https://github.com/azerioid/lcmp_gui
+# Repo: https://github.com/azerioid/lacmp_gui
 #
 # REQUIREMENT: teddysun/lcmp (Caddy) or teddysun/lamp (Apache) must already be installed.
 # This wrapper never installs, stops, or reconfigures the stack's sites.
@@ -32,8 +32,8 @@ if [[ ! -f "${INSTALLER}" ]]; then
 
   This looks like a partial clone. Re-clone the full repository:
 
-    git clone https://github.com/azerioid/lcmp_gui.git
-    cd lcmp_gui && chmod +x lcmp_gui.sh && ./lcmp_gui.sh" >&2
+    git clone https://github.com/azerioid/lacmp_gui.git
+    cd lacmp_gui && chmod +x lcmp_gui.sh && ./lcmp_gui.sh" >&2
     exit 1
 fi
 

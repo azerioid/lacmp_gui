@@ -23,8 +23,8 @@ options (`teddysun/lcmp` and `teddysun/lamp`).
 
 ```bash
 # as root, on the LCMP or LAMP host
-git clone https://github.com/azerioid/lcmp_gui.git
-cd lcmp_gui
+git clone https://github.com/azerioid/lacmp_gui.git
+cd lacmp_gui
 chmod +x lcmp_gui.sh
 ./lcmp_gui.sh
 ```
