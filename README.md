@@ -1,6 +1,6 @@
 # LACMP Panel
 
-A web control plane for [teddysun/lacmp](https://github.com/teddysun/lacmp)
+A web control plane for [teddysun/lacmp](https://github.com/teddysun/lcmp)
 (Linux + **Caddy** + MariaDB + PHP) and [teddysun/lamp](https://github.com/teddysun/lamp)
 (Linux + **Apache** + MariaDB + PHP). The `lacmp` / `lamp` CLI stays the source of
 truth; this panel is a scoped, authenticated UI in front of it.
