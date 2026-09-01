@@ -120,7 +120,49 @@ marked read-only.
 ### First run
 
 Open the panel and complete the **setup wizard** (admin email + strong password
-+ TOTP). 2FA is required. There is no `artisan` admin bootstrap.
++ TOTP). 2FA is required when `PANEL_REQUIRE_TOTP=true` (public mode default).
+There is no `artisan` admin bootstrap.
+
+### Install walkthrough (screenshots)
+
+Screenshots from a fresh **LCMP** box (Ubuntu 24.04), in chronological order.
+Files live in [`screenhoot/`](screenhoot/) as `NN-YYYY-MM-DD-HHMMSS.png`.
+
+| # | Time | Step |
+| --- | --- | --- |
+| 1 | 16:57:35 | Clone [lacmp_gui](https://github.com/azerioid/lacmp_gui.git), `chmod +x lacmp_gui.sh`, first `./lacmp_gui.sh`. Preflight must find **`lcmp`** (teddysun Caddy CLI), not `lacmp`. |
+| 2 | 16:57:43 | `git pull` after the stack-detection fix, then re-run the installer. |
+| 3 | 16:58:43 | Interactive install — **tunnel** mode (default): port **3169**, TOTP optional. |
+| 4 | 16:59:04 | Tunnel install finished. Reach the panel with `ssh -L 3169:127.0.0.1:3169 user@host` then `http://127.0.0.1:3169`. |
+| 5 | 17:01:52 | Re-run installer — choose **public** access, blank domain (IP / self-signed), port **3169**. |
+| 6 | 17:02:14 | Public Caddy apply can fail with `permission denied` on `/var/lib/caddy/.../root.crt` when internal PKI was created as **root** (pre-`af5f785`). |
+| 7 | 17:02:42 | Recovery on old builds: `chown -R caddy:caddy /var/lib/caddy` and `systemctl restart caddy`, then re-run public install. Current `main` does this automatically. |
+| 8 | 17:02:49 | Public HTTPS apply succeeds — Caddy binds the panel port (`tls internal`). |
+| 9 | 17:03:42 | Browser: accept the self-signed cert warning, open `https://<ip>:3169`, complete setup / login. |
+
+![Step 1 — clone and first preflight](screenhoot/01-2026-09-01-165735.png)
+
+![Step 2 — git pull and retry](screenhoot/02-2026-09-01-165743.png)
+
+![Step 3 — tunnel install prompts](screenhoot/03-2026-09-01-165843.png)
+
+![Step 4 — tunnel install complete](screenhoot/04-2026-09-01-165904.png)
+
+![Step 5 — public mode prompts](screenhoot/05-2026-09-01-170152.png)
+
+![Step 6 — public PKI permission denied (historical)](screenhoot/06-2026-09-01-170214.png)
+
+![Step 7 — chown recovery / re-run](screenhoot/07-2026-09-01-170242.png)
+
+![Step 8 — public HTTPS applied](screenhoot/08-2026-09-01-170249.png)
+
+![Step 9 — panel in the browser](screenhoot/09-2026-09-01-170342.png)
+
+Non-interactive public install (no prompts):
+
+```bash
+./lacmp_gui.sh --non-interactive --access=public --ip=<your-ip> --port=3169
+```
 
 Uninstall:
 
@@ -230,5 +272,6 @@ deploy/install.sh     only place with real install logic
 deploy/uninstall.sh
 deploy/fail2ban/      filter + jail (no secrets)
 deploy/{caddy,php-fpm,sudoers.d,broker.json.example}
+screenhoot/           install walkthrough PNGs (numbered by date/time)
 README.md
 ```
