@@ -799,7 +799,27 @@ reclaim_caddy_datadir() {
     [[ -n "${u}" ]] || return 0
     [[ -d /var/lib/caddy ]] || return 0
     echo "==> Caddy data dir owner: ${u} (/var/lib/caddy)"
+    # tls internal writes PKI under .local; the whole data dir must match the unit user.
     chown -R "${u}:${u}" /var/lib/caddy
+}
+
+# `caddy validate` with `tls internal` provisions the local CA under HOME.
+# Running that as root with HOME=/var/lib/caddy leaves root-owned root.crt;
+# the caddy service then gets permission denied on apply.
+caddy_as_service() {
+    local u="" rc=0
+    local bin="${CADDY_BIN:-$(command -v caddy || echo /usr/bin/caddy)}"
+    reclaim_caddy_datadir
+    u="$(caddy_service_user)"
+    if [[ -n "${u}" ]] && command -v runuser >/dev/null 2>&1; then
+        runuser -u "${u}" -- "${bin}" "$@"
+        rc=$?
+    else
+        "${bin}" "$@"
+        rc=$?
+    fi
+    reclaim_caddy_datadir
+    return "${rc}"
 }
 
 verify_caddy_healthy() {
@@ -869,11 +889,17 @@ caddy_apply() {
 
     export M="${CADDY_RELOAD}" P="${ports}"
     if ! broker_caddy_apply; then
-        echo "Caddy apply failed via broker; rolling back the panel snippet." >&2
-        rollback_panel_snippet "${snippet}" "${bak}"
-        export M=auto P=""
-        broker_caddy_apply >/dev/null 2>&1 || true
-        return 1
+        echo "==> Caddy apply failed; chown data dir, restart unit, retry once." >&2
+        reclaim_caddy_datadir
+        systemctl restart caddy || true
+        sleep 1
+        if ! broker_caddy_apply; then
+            echo "Caddy apply failed via broker; rolling back the panel snippet." >&2
+            rollback_panel_snippet "${snippet}" "${bak}"
+            export M=auto P=""
+            broker_caddy_apply >/dev/null 2>&1 || true
+            return 1
+        fi
     fi
     unset M P
 
@@ -1515,7 +1541,7 @@ pathlib.Path(snippet).write_text("".join(parts))
 PY
     chmod 0644 "${SNIPPET}"
     assert_caddyfile_path "${CADDYFILE}"
-    if ! "${CADDY_BIN}" validate --config "${CADDYFILE}"; then
+    if ! caddy_as_service validate --config "${CADDYFILE}"; then
         rollback_panel_snippet "${SNIPPET}" "${BAK}"
         echo "Caddy validate failed; panel snippet was rolled back." >&2
         exit 1
