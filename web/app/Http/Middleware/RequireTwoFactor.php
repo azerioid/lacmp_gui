@@ -15,7 +15,7 @@ final class RequireTwoFactor
             return $next($request);
         }
 
-        if (! config('lcmp.require_totp')) {
+        if (! config('lacmp.require_totp')) {
             return $next($request);
         }
 

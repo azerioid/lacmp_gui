@@ -1,6 +1,6 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "lcmp/panel",
+    "name": "lacmp/panel",
     "type": "project",
     "description": "The skeleton application for the Laravel framework.",
     "keywords": ["laravel", "framework"],
@@ -27,8 +27,8 @@
             "App\\": "app/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/",
-            "LcmpPanel\\Broker\\": [
-                "lib/lcmp-broker/",
+            "LacmpPanel\\Broker\\": [
+                "lib/lacmp-broker/",
                 "../broker/src/"
             ]
         }
@@ -36,7 +36,7 @@
     "autoload-dev": {
         "psr-4": {
             "Tests\\": "tests/",
-            "LcmpPanel\\Broker\\Tests\\": "../broker/tests/Unit/"
+            "LacmpPanel\\Broker\\Tests\\": "../broker/tests/Unit/"
         }
     },
     "scripts": {

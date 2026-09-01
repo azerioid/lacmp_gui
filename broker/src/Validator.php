@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker;
+namespace LacmpPanel\Broker;
 
 final class Validator
 {
@@ -30,7 +30,7 @@ final class Validator
         'mysql',
         'performance_schema',
         'sys',
-        'lcmp_panel',
+        'lacmp_panel',
     ];
 
     public static function action(string $action): string
@@ -151,7 +151,7 @@ final class Validator
             throw new BrokerException('Invalid service name.', 2);
         }
         if (!in_array($name, $allowed, true)) {
-            throw new BrokerException('Service is not in the LCMP control allowlist.', 3);
+            throw new BrokerException('Service is not in the LACMP control allowlist.', 3);
         }
         return $name;
     }

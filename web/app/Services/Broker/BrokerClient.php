@@ -4,8 +4,8 @@ namespace App\Services\Broker;
 
 use App\Models\AuditLog;
 use Illuminate\Support\Facades\Auth;
-use LcmpPanel\Broker\AuditLog as BrokerAudit;
-use LcmpPanel\Broker\Validator;
+use LacmpPanel\Broker\AuditLog as BrokerAudit;
+use LacmpPanel\Broker\Validator;
 use Symfony\Component\Process\Process;
 
 /**
@@ -23,7 +23,7 @@ final class BrokerClient
         Validator::action($action);
         $this->assertSafeArgs($args);
 
-        $driver = (string) config('lcmp.broker.driver', 'fake');
+        $driver = (string) config('lacmp.broker.driver', 'fake');
         try {
             $response = match ($driver) {
                 'sudo' => $this->viaSudo($action, $args, $stdin, $timeout),
@@ -67,10 +67,10 @@ final class BrokerClient
 
     private function viaSudo(string $action, array $args, array $stdin, ?int $timeout = null): BrokerResponse
     {
-        $broker = (string) config('lcmp.broker.path');
+        $broker = (string) config('lacmp.broker.path');
         $cmd = [];
-        if (config('lcmp.broker.use_sudo')) {
-            $cmd[] = (string) config('lcmp.broker.sudo_path');
+        if (config('lacmp.broker.use_sudo')) {
+            $cmd[] = (string) config('lacmp.broker.sudo_path');
             $cmd[] = '-n';
         }
         $cmd[] = $broker;
@@ -80,7 +80,7 @@ final class BrokerClient
         }
 
         $process = new Process($cmd);
-        $process->setTimeout($timeout ?? (int) config('lcmp.broker.timeout', 45));
+        $process->setTimeout($timeout ?? (int) config('lacmp.broker.timeout', 45));
         if ($stdin !== []) {
             $process->setInput(json_encode($stdin, JSON_UNESCAPED_SLASHES));
         }
@@ -95,10 +95,10 @@ final class BrokerClient
 
     private function viaInProcess(string $action, array $args, array $stdin): BrokerResponse
     {
-        $configPath = getenv('LCMP_PANEL_CONFIG') ?: '/etc/lcmp-panel/broker.json';
-        $runtime = new \LcmpPanel\Broker\PosixRuntime();
-        $config = \LcmpPanel\Broker\Config::load($configPath, $runtime);
-        $kernel = new \LcmpPanel\Broker\Kernel($config, $runtime);
+        $configPath = getenv('LACMP_PANEL_CONFIG') ?: '/etc/lacmp-panel/broker.json';
+        $runtime = new \LacmpPanel\Broker\PosixRuntime();
+        $config = \LacmpPanel\Broker\Config::load($configPath, $runtime);
+        $kernel = new \LacmpPanel\Broker\Kernel($config, $runtime);
         ob_start();
         $kernel->run(array_merge(['broker', $action], $args), $stdin);
         $out = ob_get_clean();

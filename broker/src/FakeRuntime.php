@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker;
+namespace LacmpPanel\Broker;
 
 /**
  * In-memory runtime for unit tests. Never touches the real machine.
@@ -52,13 +52,13 @@ final class FakeRuntime implements Runtime
         $this->dirs['/etc/php/8.4'] = true;
         $this->dirs['/var'] = true;
         $this->dirs['/var/log/caddy'] = true;
-        $this->dirs['/var/log/lcmp-panel'] = true;
+        $this->dirs['/var/log/lacmp-panel'] = true;
         $this->dirs['/var/lib'] = true;
-        $this->dirs['/var/lib/lcmp-panel'] = true;
-        $this->dirs['/var/lib/lcmp-panel/staging'] = true;
+        $this->dirs['/var/lib/lacmp-panel'] = true;
+        $this->dirs['/var/lib/lacmp-panel/staging'] = true;
         $this->dirs['/usr/local/lib'] = true;
-        $this->dirs['/usr/local/lib/lcmp-panel'] = true;
-        $this->dirs['/usr/local/lib/lcmp-panel/web'] = true;
+        $this->dirs['/usr/local/lib/lacmp-panel'] = true;
+        $this->dirs['/usr/local/lib/lacmp-panel/web'] = true;
         $this->dirs['/etc/systemd'] = true;
         $this->dirs['/etc/systemd/system'] = true;
     }

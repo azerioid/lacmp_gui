@@ -1,47 +1,47 @@
-# LCMP Panel
+# LACMP Panel
 
-A web control plane for [teddysun/lcmp](https://github.com/teddysun/lcmp)
+A web control plane for [teddysun/lacmp](https://github.com/teddysun/lacmp)
 (Linux + **Caddy** + MariaDB + PHP) and [teddysun/lamp](https://github.com/teddysun/lamp)
-(Linux + **Apache** + MariaDB + PHP). The `lcmp` / `lamp` CLI stays the source of
+(Linux + **Apache** + MariaDB + PHP). The `lacmp` / `lamp` CLI stays the source of
 truth; this panel is a scoped, authenticated UI in front of it.
 
 The panel is **control-plane infrastructure**, not a user site. It installs
-under `/usr/local/lib/lcmp-panel/` (never the www root). Caddy and Apache cannot
+under `/usr/local/lib/lacmp-panel/` (never the www root). Caddy and Apache cannot
 share `:80`/`:443` — install **one** stack per host.
 
 ## Prerequisites
 
 - A supported OS: Ubuntu 22.04/24.04, Debian 11–13, or EL 8/9/10
-- **LCMP or LAMP already installed** (`lcmp` or `lamp` on PATH, plus MariaDB,
+- **LACMP or LAMP already installed** (`lacmp` or `lamp` on PATH, plus MariaDB,
   PHP-FPM, and Caddy *or* Apache). This installer will not install, stop, or
   reconfigure the stack, existing vhosts, MariaDB data, Redis, or your sites.
 
-If neither command is present, `./lcmp_gui.sh` exits and prints both clone
-options (`teddysun/lcmp` and `teddysun/lamp`).
+If neither command is present, `./lacmp_gui.sh` exits and prints both clone
+options (`teddysun/lacmp` and `teddysun/lamp`).
 
 ## Default install (optional extras)
 
 ```bash
-# as root, on the LCMP or LAMP host
+# as root, on the LACMP or LAMP host
 git clone https://github.com/azerioid/lacmp_gui.git
 cd lacmp_gui
-chmod +x lcmp_gui.sh
-./lcmp_gui.sh
+chmod +x lacmp_gui.sh
+./lacmp_gui.sh
 ```
 
 With **no flags**:
 
-- Preflight checks for **`lcmp` or `lamp`** (and Caddy or Apache, MariaDB, PHP-FPM)
+- Preflight checks for **`lacmp` or `lamp`** (and Caddy or Apache, MariaDB, PHP-FPM)
 - Stack is **`--stack=auto`**: prefer the web server bound to `:80`/`:443`
 - Access is **tunnel** — `127.0.0.1:3169` only (SSH `-L`). Public HTTPS is
   **optional** (`--access=public`)
 - On a TTY you can confirm tunnel vs public; Enter keeps the defaults
 - Non-interactive (`--non-interactive` or no TTY) is tunnel on **3169**
 
-Override the port with `--port=NNNN`. Force a stack with `--stack=lcmp` or
+Override the port with `--port=NNNN`. Force a stack with `--stack=lacmp` or
 `--stack=lamp`.
 
-`lcmp_gui.sh` is a thin preflight (OS gate, stack present, php-cli + composer).
+`lacmp_gui.sh` is a thin preflight (OS gate, stack present, php-cli + composer).
 All install logic is in `deploy/install.sh`.
 
 ### Access modes
@@ -49,42 +49,42 @@ All install logic is in `deploy/install.sh`.
 | Mode | How you reach it | TLS | When to use |
 | --- | --- | --- | --- |
 | **tunnel** (default) | `ssh -L 3169:127.0.0.1:3169 user@host` then `http://127.0.0.1:3169` | localhost HTTP only | Safest. No public listener. |
-| **public + domain** (optional) | `https://panel.example.com:PORT` | LCMP: Caddy ACME. LAMP: certbot on 443, else self-signed | DNS A record required. |
-| **public + IP** (optional) | `https://<ip>:PORT` | LCMP: Caddy `tls internal`. LAMP: openssl self-signed | Browser shows an untrusted-cert warning. Traffic is still encrypted. |
+| **public + domain** (optional) | `https://panel.example.com:PORT` | LACMP: Caddy ACME. LAMP: certbot on 443, else self-signed | DNS A record required. |
+| **public + IP** (optional) | `https://<ip>:PORT` | LACMP: Caddy `tls internal`. LAMP: openssl self-signed | Browser shows an untrusted-cert warning. Traffic is still encrypted. |
 
 Public mode **never** serves the panel over plaintext HTTP on a public interface.
 By default it also enables **TOTP**, a **fail2ban** jail, and a firewall rule
 (`--require-totp` / `--fail2ban` / `--firewall` can turn those off).
 
 ```bash
-# Default: detect lcmp vs lamp, tunnel on 3169
-./lcmp_gui.sh
+# Default: detect lacmp vs lamp, tunnel on 3169
+./lacmp_gui.sh
 
 # Explicit tunnel
-./lcmp_gui.sh --access=tunnel --stack=auto
+./lacmp_gui.sh --access=tunnel --stack=auto
 
-# Force Apache (LAMP) or Caddy (LCMP)
-./lcmp_gui.sh --stack=lamp
-./lcmp_gui.sh --stack=lcmp
+# Force Apache (LAMP) or Caddy (LACMP)
+./lacmp_gui.sh --stack=lamp
+./lacmp_gui.sh --stack=lacmp
 
 # Custom port
-./lcmp_gui.sh --port=4444
+./lacmp_gui.sh --port=4444
 
 # Optional public IP mode (self-signed HTTPS)
-./lcmp_gui.sh --access=public --port=3169 --ip=203.0.113.10
+./lacmp_gui.sh --access=public --port=3169 --ip=203.0.113.10
 
 # Optional public domain mode (trusted cert)
-./lcmp_gui.sh --access=public --domain=panel.example.com --port=3169 --le-email=you@example.com
+./lacmp_gui.sh --access=public --domain=panel.example.com --port=3169 --le-email=you@example.com
 
 # Non-interactive public (must pass --domain= or --ip=)
-./lcmp_gui.sh --non-interactive --access=public --ip=203.0.113.10 --port=3169 --enable-ufw
+./lacmp_gui.sh --non-interactive --access=public --ip=203.0.113.10 --port=3169 --enable-ufw
 
 # Apply: auto (default). none = write+validate only
-./lcmp_gui.sh --caddy-reload=auto
-./lcmp_gui.sh --caddy-reload=none
+./lacmp_gui.sh --caddy-reload=auto
+./lacmp_gui.sh --caddy-reload=none
 ```
 
-`./lcmp_gui.sh --help` lists every flag and default.
+`./lacmp_gui.sh --help` lists every flag and default.
 
 If ufw is installed but inactive, pass `--enable-ufw` so the installer can
 enable it **after** allowing SSH/22.
@@ -95,7 +95,7 @@ only (Apache cannot mix HTTP and HTTPS on the same port).
 
 | Flag | Meaning |
 | --- | --- |
-| `--stack=auto\|lcmp\|lamp` | Detect or force the stack (default: **auto**) |
+| `--stack=auto\|lacmp\|lamp` | Detect or force the stack (default: **auto**) |
 | `--access=tunnel\|public` | Access mode (default: **tunnel**; public is optional) |
 | `--domain=` / `--ip=` | Public HTTPS identity |
 | `--port=` | Panel listen port (default 3169; not 80/443) |
@@ -126,7 +126,7 @@ Uninstall:
 
 ```bash
 ./deploy/uninstall.sh            # keeps the panel DB
-./deploy/uninstall.sh --drop-db  # also drops lcmp_panel users/schema
+./deploy/uninstall.sh --drop-db  # also drops lacmp_panel users/schema
 ```
 
 Uninstall removes the panel prefix, FPM pool, sudoers, panel Caddy snippet or
@@ -135,27 +135,27 @@ It never deletes vhosts or databases created through the panel.
 
 ## Privilege separation
 
-1. **Web app** — PHP-FPM pool `lcmp-panel`, user `caddy`, `www-data`, or `apache`.
-2. **Broker** — `/usr/local/lib/lcmp-panel/broker`, `root:root` mode `0750`.
+1. **Web app** — PHP-FPM pool `lacmp-panel`, user `caddy`, `www-data`, or `apache`.
+2. **Broker** — `/usr/local/lib/lacmp-panel/broker`, `root:root` mode `0750`.
    Enumerated actions, argv arrays (no shell). Secrets on stdin JSON.
 
 sudoers (generated for the real web user + prefix):
 
 ```
-caddy ALL=(root) NOPASSWD: /usr/local/lib/lcmp-panel/broker
+caddy ALL=(root) NOPASSWD: /usr/local/lib/lacmp-panel/broker
 ```
 
-MariaDB **admin** credentials live in `/etc/lcmp-panel/broker.json`
-(`0600 root:root`). The web `.env` only has the limited `lcmp_panel` app user.
+MariaDB **admin** credentials live in `/etc/lacmp-panel/broker.json`
+(`0600 root:root`). The web `.env` only has the limited `lacmp_panel` app user.
 
 Layout:
 
 ```
-/usr/local/lib/lcmp-panel/          0751 root:root
+/usr/local/lib/lacmp-panel/          0751 root:root
   broker                            0750 root:root
   src/                              0750 root:root
   web/                              0750 web-user
-/etc/lcmp-panel/broker.json         0600 root:root
+/etc/lacmp-panel/broker.json         0600 root:root
 ```
 
 PHP-FPM on Debian/Ubuntu uses `ProtectSystem=full`. The installer adds a
@@ -194,11 +194,11 @@ cd web
 
 ## Troubleshooting
 
-- **Neither lcmp nor lamp:** install [teddysun/lcmp](https://github.com/teddysun/lcmp)
+- **Neither lacmp nor lamp:** install [teddysun/lacmp](https://github.com/teddysun/lacmp)
   or [teddysun/lamp](https://github.com/teddysun/lamp) first, then re-run
-  `./lcmp_gui.sh`.
+  `./lacmp_gui.sh`.
 - **Both commands present:** `--stack=auto` uses whoever is on `:80`/`:443`, or
-  pass `--stack=lcmp` / `--stack=lamp`.
+  pass `--stack=lacmp` / `--stack=lamp`.
 - **Caddy admin API connection refused (`dial tcp [::1]:2019`):** the installer
   probes `127.0.0.1` first and falls back to `systemctl reload` then
   `systemctl restart`. Re-run the installer; check `Caddy apply strategy`.
@@ -223,7 +223,7 @@ is an explicit click in the UI, never automatic.
 ## Layout (repo)
 
 ```
-lcmp_gui.sh           documented entry point
+lacmp_gui.sh           documented entry point
 broker/               privileged CLI + unit tests
 web/                  Laravel 12 panel
 deploy/install.sh     only place with real install logic

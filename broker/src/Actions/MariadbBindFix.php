@@ -1,12 +1,12 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Actions;
+namespace LacmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\BrokerException;
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Runtime;
-use LcmpPanel\Broker\Systemd;
+use LacmpPanel\Broker\BrokerException;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\Systemd;
 
 final class MariadbBindFix
 {
@@ -18,7 +18,7 @@ final class MariadbBindFix
         }
         $original = $runtime->readFile($path);
         $stamp = preg_replace('/[^0-9TZ]/', '', $runtime->now()) ?: gmdate('YmdHis');
-        $backup = $path . '.lcmp-bak-' . $stamp;
+        $backup = $path . '.lacmp-bak-' . $stamp;
         $runtime->writeFile($backup, $original, 0640);
 
         $cnf = $original;

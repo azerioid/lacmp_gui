@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker;
+namespace LacmpPanel\Broker;
 
 final class Systemd
 {
@@ -77,7 +77,7 @@ final class Systemd
      */
     public static function applyCaddy(Runtime $runtime, Config $config, string $mode = 'auto', array $expectPorts = []): array
     {
-        return \LcmpPanel\Broker\Web\WebServers::for($config)->reload($runtime, $config, $mode, $expectPorts);
+        return \LacmpPanel\Broker\Web\WebServers::for($config)->reload($runtime, $config, $mode, $expectPorts);
     }
 
     public static function statusRaw(Runtime $runtime, string $unit): string

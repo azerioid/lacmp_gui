@@ -1,7 +1,7 @@
 #!/usr/bin/env php
 <?php
 /**
- * LCMP Panel privileged broker.
+ * LACMP Panel privileged broker.
  *
  * Enumerated actions only. Arguments are re-validated here. Commands are
  * executed as argv arrays via proc_open — never interpolated into a shell.
@@ -10,17 +10,17 @@
  * Secrets (passwords) MUST be passed as JSON on stdin, never argv.
  *
  * Production entry is the bash wrapper `broker` which execs this file with
- * open_basedir / disable_functions cleared (LCMP hardens CLI php.ini).
+ * open_basedir / disable_functions cleared (LACMP hardens CLI php.ini).
  */
 declare(strict_types=1);
 
 require __DIR__ . '/src/bootstrap.php';
 
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Kernel;
-use LcmpPanel\Broker\PosixRuntime;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Kernel;
+use LacmpPanel\Broker\PosixRuntime;
 
-$configPath = getenv('LCMP_PANEL_CONFIG') ?: '/etc/lcmp-panel/broker.json';
+$configPath = getenv('LACMP_PANEL_CONFIG') ?: '/etc/lacmp-panel/broker.json';
 $runtime = new PosixRuntime();
 $config = Config::load($configPath, $runtime);
 $kernel = new Kernel($config, $runtime);

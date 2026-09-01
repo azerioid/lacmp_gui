@@ -8,7 +8,7 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 #[Layout('layouts.app')]
-#[Title('Security · LCMP Panel')]
+#[Title('Security · LACMP Panel')]
 class SecurityPage extends Component
 {
     public array $auth = [];

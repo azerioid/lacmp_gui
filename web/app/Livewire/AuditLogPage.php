@@ -9,7 +9,7 @@ use Livewire\Component;
 use Livewire\WithPagination;
 
 #[Layout('layouts.app')]
-#[Title('Audit · LCMP Panel')]
+#[Title('Audit · LACMP Panel')]
 class AuditLogPage extends Component
 {
     use WithPagination;

@@ -58,8 +58,8 @@
 
     <section class="panel p-5 space-y-3">
         <h2 class="text-sm font-medium">MariaDB bind rollback</h2>
-        <p class="text-sm text-zinc-400">The guided fix on Overview writes a <span class="font-mono">.lcmp-bak-*</span> next to 50-server.cnf. Paste that path to restore the previous bind-address (restarts MariaDB).</p>
-        <input class="field" wire:model="bind_backup" placeholder="/etc/mysql/mariadb.conf.d/50-server.cnf.lcmp-bak-…">
+        <p class="text-sm text-zinc-400">The guided fix on Overview writes a <span class="font-mono">.lacmp-bak-*</span> next to 50-server.cnf. Paste that path to restore the previous bind-address (restarts MariaDB).</p>
+        <input class="field" wire:model="bind_backup" placeholder="/etc/mysql/mariadb.conf.d/50-server.cnf.lacmp-bak-…">
         <button class="btn-ghost" type="button" wire:click="rollbackMariadb" wire:confirm="Restart MariaDB from this backup?">Rollback bind-address</button>
     </section>
 

@@ -1,18 +1,18 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Actions;
+namespace LacmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Runtime;
-use LcmpPanel\Broker\SpacesClient;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\SpacesClient;
 
 final class BackupList
 {
     public function handle(string $action, array $args, array $input, Runtime $runtime, Config $config): array
     {
         $client = SpacesClient::fromInput($input['spaces'] ?? []);
-        $listed = $client->list('lcmp/');
+        $listed = $client->list('lacmp/');
         $objects = [];
         foreach ($listed['objects'] as $obj) {
             $key = (string) ($obj['key'] ?? '');

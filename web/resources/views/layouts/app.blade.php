@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $title ?? 'LCMP Panel' }}</title>
+    <title>{{ $title ?? 'LACMP Panel' }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles
 </head>
@@ -15,7 +15,7 @@
             <div class="flex items-center gap-2 border-b border-white/5 px-5 py-5">
                 <span class="led led-on"></span>
                 <div>
-                    <div class="font-semibold tracking-wide text-zinc-100">LCMP</div>
+                    <div class="font-semibold tracking-wide text-zinc-100">LACMP</div>
                     <div class="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">control plane</div>
                 </div>
             </div>

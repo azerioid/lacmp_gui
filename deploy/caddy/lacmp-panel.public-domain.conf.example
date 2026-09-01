@@ -1,5 +1,5 @@
 # Example: public domain mode (Let's Encrypt). Preferred for public access.
-# ./lcmp_gui.sh --access=public --domain=panel.example.com --port=3169 --email=you@example.com
+# ./lacmp_gui.sh --access=public --domain=panel.example.com --port=3169 --email=you@example.com
 #
 # Optional allowlist:
 #   @blocked not remote_ip 203.0.113.0/24
@@ -7,8 +7,8 @@
 
 https://panel.example.com:3169 {
     encode gzip zstd
-    root * /usr/local/lib/lcmp-panel/web/public
-    php_fastcgi unix//run/php/lcmp-panel.sock
+    root * /usr/local/lib/lacmp-panel/web/public
+    php_fastcgi unix//run/php/lacmp-panel.sock
     file_server
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -18,6 +18,6 @@ https://panel.example.com:3169 {
         -Server
     }
     log {
-        output file /var/log/caddy/lcmp-panel.log
+        output file /var/log/caddy/lacmp-panel.log
     }
 }

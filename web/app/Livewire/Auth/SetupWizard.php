@@ -12,7 +12,7 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 #[Layout('layouts.guest')]
-#[Title('Initial setup · LCMP Panel')]
+#[Title('Initial setup · LACMP Panel')]
 class SetupWizard extends Component
 {
     public string $name = 'Admin';
@@ -52,7 +52,7 @@ class SetupWizard extends Component
         session()->regenerate();
         session()->put('last_activity_at', time());
 
-        if (! config('lcmp.require_totp')) {
+        if (! config('lacmp.require_totp')) {
             $this->redirectRoute('dashboard', navigate: true);
 
             return;

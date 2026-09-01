@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# LCMP Panel installer — the only place that contains real install logic.
-# Invoked by ./lcmp_gui.sh (documented) or directly by advanced users.
+# LACMP Panel installer — the only place that contains real install logic.
+# Invoked by ./lacmp_gui.sh (documented) or directly by advanced users.
 #
 # Idempotent: re-running updates code without rotating DB passwords,
 # APP_KEY, or broker.json unless --reset-db is passed.
@@ -12,7 +12,7 @@ if [[ ${EUID} -ne 0 && "${1:-}" != "-h" && "${1:-}" != "--help" ]]; then
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PREFIX="${PREFIX:-/usr/local/lib/lcmp-panel}"
+PREFIX="${PREFIX:-/usr/local/lib/lacmp-panel}"
 WWW_ROOT="${WWW_ROOT:-/data/www}"
 CADDY_CONFD="${CADDY_CONFD:-/etc/caddy/conf.d}"
 CADDYFILE='/etc/caddy/Caddyfile'
@@ -50,41 +50,41 @@ DRY_RUN=0
 detect_stack() {
     STACK="$(echo "${STACK}" | tr '[:upper:]' '[:lower:]')"
     case "${STACK}" in
-        auto|lcmp|lamp) ;;
-        *) echo "Invalid --stack=${STACK} (use auto|lcmp|lamp)" >&2; exit 2 ;;
+        auto|lacmp|lamp) ;;
+        *) echo "Invalid --stack=${STACK} (use auto|lacmp|lamp)" >&2; exit 2 ;;
     esac
-    local has_lcmp=0 has_lamp=0
-    command -v lcmp >/dev/null 2>&1 && has_lcmp=1
+    local has_lacmp=0 has_lamp=0
+    command -v lacmp >/dev/null 2>&1 && has_lacmp=1
     command -v lamp >/dev/null 2>&1 && has_lamp=1
     if [[ "${STACK}" == "auto" ]]; then
         local listener=""
         listener="$(ss -tlnp 2>/dev/null | awk '$4 ~ /:80$/ {print; exit}' || true)"
         if echo "${listener}" | grep -qi caddy; then
-            STACK=lcmp
+            STACK=lacmp
         elif echo "${listener}" | grep -qiE 'apache|httpd'; then
             STACK=lamp
-        elif [[ "${has_lcmp}" -eq 1 && "${has_lamp}" -eq 0 ]]; then
-            STACK=lcmp
-        elif [[ "${has_lamp}" -eq 1 && "${has_lcmp}" -eq 0 ]]; then
+        elif [[ "${has_lacmp}" -eq 1 && "${has_lamp}" -eq 0 ]]; then
+            STACK=lacmp
+        elif [[ "${has_lamp}" -eq 1 && "${has_lacmp}" -eq 0 ]]; then
             STACK=lamp
-        elif [[ "${has_lcmp}" -eq 1 ]]; then
-            STACK=lcmp
+        elif [[ "${has_lacmp}" -eq 1 ]]; then
+            STACK=lacmp
         elif [[ "${has_lamp}" -eq 1 ]]; then
             STACK=lamp
         else
-            echo "Neither LCMP nor LAMP was detected. Install teddysun/lcmp or teddysun/lamp first." >&2
+            echo "Neither LACMP nor LAMP was detected. Install teddysun/lacmp or teddysun/lamp first." >&2
             exit 1
         fi
     fi
-    if [[ "${STACK}" == "lcmp" && "${has_lcmp}" -eq 0 ]]; then
-        echo "--stack=lcmp requires the 'lcmp' command (teddysun/lcmp)." >&2
+    if [[ "${STACK}" == "lacmp" && "${has_lacmp}" -eq 0 ]]; then
+        echo "--stack=lacmp requires the 'lacmp' command (teddysun/lacmp)." >&2
         exit 1
     fi
     if [[ "${STACK}" == "lamp" && "${has_lamp}" -eq 0 ]]; then
         echo "--stack=lamp requires the 'lamp' command (teddysun/lamp)." >&2
         exit 1
     fi
-    if [[ "${STACK}" == "lcmp" ]]; then
+    if [[ "${STACK}" == "lacmp" ]]; then
         WEB_SERVICE=caddy
         VHOST_DIR="${CADDY_CONFD}"
         VHOST_AVAILABLE=""
@@ -109,8 +109,8 @@ detect_stack() {
         CADDY_BIN=""
         command -v a2enmod >/dev/null 2>&1 && a2enmod proxy proxy_fcgi setenvif ssl rewrite headers >/dev/null 2>&1 || true
     fi
-    if [[ "${STACK}" == "lcmp" ]] && ! command -v caddy >/dev/null 2>&1; then
-        echo "Stack is LCMP but caddy was not found." >&2
+    if [[ "${STACK}" == "lacmp" ]] && ! command -v caddy >/dev/null 2>&1; then
+        echo "Stack is LACMP but caddy was not found." >&2
         exit 1
     fi
     if [[ "${STACK}" == "lamp" ]] && ! command -v apache2 >/dev/null 2>&1 && ! command -v httpd >/dev/null 2>&1 && ! command -v apachectl >/dev/null 2>&1 && ! command -v apache2ctl >/dev/null 2>&1; then
@@ -153,11 +153,11 @@ caddy_port_listening() {
 panel_snippet_uses_port() {
     local p="$1" f
     for f in \
-        "${CADDY_CONFD}/lcmp-panel.conf" \
-        "${VHOST_AVAILABLE:-}/lcmp-panel.conf" \
-        "${VHOST_DIR:-}/lcmp-panel.conf" \
-        /etc/apache2/sites-available/lcmp-panel.conf \
-        /etc/httpd/conf.d/vhost/lcmp-panel.conf
+        "${CADDY_CONFD}/lacmp-panel.conf" \
+        "${VHOST_AVAILABLE:-}/lacmp-panel.conf" \
+        "${VHOST_DIR:-}/lacmp-panel.conf" \
+        /etc/apache2/sites-available/lacmp-panel.conf \
+        /etc/httpd/conf.d/vhost/lacmp-panel.conf
     do
         [[ -n "${f}" && -f "${f}" ]] || continue
         grep -Eq ":${p}([^0-9]|$)" "${f}" && return 0
@@ -167,13 +167,13 @@ panel_snippet_uses_port() {
 
 collect_previous_ports() {
     PREV_ALLOW_IPS=""
-    if [[ -f /etc/lcmp-panel/access.env ]]; then
-        PREV_ALLOW_IPS="$(grep '^PANEL_ALLOW_IPS=' /etc/lcmp-panel/access.env | cut -d= -f2- || true)"
+    if [[ -f /etc/lacmp-panel/access.env ]]; then
+        PREV_ALLOW_IPS="$(grep '^PANEL_ALLOW_IPS=' /etc/lacmp-panel/access.env | cut -d= -f2- || true)"
     fi
     PREV_PORTS="$(PREFIX="${PREFIX}" CADDY_CONFD="${CADDY_CONFD}" python3 - <<'PY'
 import os, re, pathlib
 ports = set()
-ae = pathlib.Path("/etc/lcmp-panel/access.env")
+ae = pathlib.Path("/etc/lacmp-panel/access.env")
 if ae.is_file():
     for line in ae.read_text().splitlines():
         if line.startswith("PANEL_PORT=") or line.startswith("TUNNEL_PORT="):
@@ -185,7 +185,7 @@ if env.is_file():
     m = re.search(r"^APP_URL=.*:(\d+)\s*$", env.read_text(), re.M)
     if m:
         ports.add(int(m.group(1)))
-snip = pathlib.Path(os.environ["CADDY_CONFD"] + "/lcmp-panel.conf")
+snip = pathlib.Path(os.environ["CADDY_CONFD"] + "/lacmp-panel.conf")
 if snip.is_file():
     for m in re.finditer(r"(?:https?://[^\s:{]+:|127\.0\.0\.1:)(\d+)", snip.read_text()):
         ports.add(int(m.group(1)))
@@ -212,7 +212,7 @@ validate_panel_port() {
     fi
     if [[ -d "${CADDY_CONFD}" ]]; then
         local hits
-        hits="$(grep -RIl --include='*.conf' -E ":${p}([^0-9]|$)" "${CADDY_CONFD}" 2>/dev/null | grep -v '/lcmp-panel.conf$' || true)"
+        hits="$(grep -RIl --include='*.conf' -E ":${p}([^0-9]|$)" "${CADDY_CONFD}" 2>/dev/null | grep -v '/lacmp-panel.conf$' || true)"
         if [[ -n "${hits}" ]]; then
             echo "Warning: another Caddy snippet already mentions port ${p}:" >&2
             echo "${hits}" >&2
@@ -256,7 +256,7 @@ firewall_delete_port() {
 
 usage() {
     cat <<'EOF'
-Usage: lcmp_gui.sh [options]
+Usage: lacmp_gui.sh [options]
        deploy/install.sh [options]
 
 Access (default: tunnel — localhost 127.0.0.1:3169 + SSH; public HTTPS is optional):
@@ -284,8 +284,8 @@ Security:
   --readonly-vhost=<host>      extra read-only vhost (repeatable)
 
 Layout:
-  --prefix=<dir>               default /usr/local/lib/lcmp-panel
-  --stack=auto|lcmp|lamp       default auto (detect lcmp vs lamp)
+  --prefix=<dir>               default /usr/local/lib/lacmp-panel
+  --stack=auto|lacmp|lamp       default auto (detect lacmp vs lamp)
   --web-user=<user>            default: web-server unit user, else caddy/www-data
   --php=<X.Y>                  default: newest installed FPM
 
@@ -363,8 +363,8 @@ if [[ -z "${ACCESS}" ]]; then
     if [[ "${NON_INTERACTIVE}" -eq 1 ]]; then
         ACCESS=tunnel
     elif [[ -t 0 && -t 1 ]]; then
-        echo "LCMP Panel installer"
-        echo "  stack   — auto-detect teddysun LCMP (Caddy) or LAMP (Apache); override with --stack="
+        echo "LACMP Panel installer"
+        echo "  stack   — auto-detect teddysun LACMP (Caddy) or LAMP (Apache); override with --stack="
         echo "  tunnel  — localhost ${PANEL_PORT} + SSH tunnel (default; public HTTPS is optional)"
         echo "  public  — HTTPS on a port (domain = trusted cert, or IP = self-signed)"
         read -r -p "Access mode [tunnel/public] (default: tunnel): " ACCESS
@@ -463,7 +463,7 @@ if [[ -z "${WEB_USER}" ]]; then
     _unit_u="$(systemctl show "${WEB_SERVICE}" -p User --value 2>/dev/null || true)"
     if [[ -n "${_unit_u}" && "${_unit_u}" != "-" && "${_unit_u}" != "root" ]] && id -u "${_unit_u}" >/dev/null 2>&1; then
         WEB_USER="${_unit_u}"
-    elif [[ "${STACK}" == "lcmp" ]] && id -u caddy >/dev/null 2>&1; then
+    elif [[ "${STACK}" == "lacmp" ]] && id -u caddy >/dev/null 2>&1; then
         WEB_USER=caddy
     elif id -u www-data >/dev/null 2>&1; then
         WEB_USER=www-data
@@ -531,7 +531,7 @@ fpm_read_write_paths() {
     for p in \
         "${PREFIX}/web/storage" \
         "${PREFIX}/web/bootstrap/cache" \
-        "/var/log/lcmp-panel"
+        "/var/log/lacmp-panel"
     do
         if [[ -e "${p}" ]]; then
             paths+=("${p}")
@@ -548,7 +548,7 @@ PHP_BIN="$(command -v php || true)"
 [[ -x "${PHP_BIN}" ]] || { echo "php CLI is not on PATH (the wrapper should have installed php-cli)" >&2; exit 1; }
 
 # Local admin for CREATE USER.
-# Debian/Ubuntu LCMP: debian-sys-maint in /etc/mysql/debian.cnf
+# Debian/Ubuntu LACMP: debian-sys-maint in /etc/mysql/debian.cnf
 # RHEL: unix_socket as root, or /root/.my.cnf
 mariadb_admin() {
     local bin="mariadb"
@@ -602,7 +602,7 @@ for arg in sys.argv[1:]:
     if not arg or not confd.is_dir():
         continue
     for p in sorted(confd.glob("*.conf")):
-        if p.name == "lcmp-panel.conf" or p in seen_files:
+        if p.name == "lacmp-panel.conf" or p in seen_files:
             continue
         seen_files.add(p)
         text = p.read_text(errors="replace")
@@ -665,7 +665,7 @@ fpm_ini() {
     fi
 }
 
-echo "==> Installing LCMP Panel into ${PREFIX} (php ${PHP_VER}, user ${WEB_USER}, access ${ACCESS})"
+echo "==> Installing LACMP Panel into ${PREFIX} (php ${PHP_VER}, user ${WEB_USER}, access ${ACCESS})"
 
 [[ -d "${ROOT}/broker/src" && -f "${ROOT}/broker/broker" && -f "${ROOT}/broker/broker.php" && -d "${ROOT}/web" ]] || {
     echo "Repo layout incomplete (need broker/ and web/). Partial clone?" >&2
@@ -674,7 +674,7 @@ echo "==> Installing LCMP Panel into ${PREFIX} (php ${PHP_VER}, user ${WEB_USER}
 
 MYSQL_SOCKET="$(detect_mysql_socket)"
 MARIADB_CNF="$(detect_mariadb_cnf)"
-if [[ "${STACK}" == "lcmp" ]]; then
+if [[ "${STACK}" == "lacmp" ]]; then
     CADDY_BIN="$(command -v caddy || echo /usr/bin/caddy)"
 fi
 
@@ -874,16 +874,16 @@ apache_apply() {
             return 1
         fi
     fi
-    if command -v a2ensite >/dev/null 2>&1 && [[ -f "${VHOST_AVAILABLE}/lcmp-panel.conf" ]]; then
-        a2ensite lcmp-panel >/dev/null 2>&1 || a2ensite lcmp-panel.conf >/dev/null 2>&1 || true
+    if command -v a2ensite >/dev/null 2>&1 && [[ -f "${VHOST_AVAILABLE}/lacmp-panel.conf" ]]; then
+        a2ensite lacmp-panel >/dev/null 2>&1 || a2ensite lacmp-panel.conf >/dev/null 2>&1 || true
     fi
     if command -v a2enconf >/dev/null 2>&1 && [[ -n "${listen}" && -f "${listen}" ]]; then
-        a2enconf lcmp-panel-listen >/dev/null 2>&1 || true
+        a2enconf lacmp-panel-listen >/dev/null 2>&1 || true
     fi
     if ! "${APACHE_CTL}" -t; then
         echo "Apache configtest failed; rolling back the panel vhost." >&2
         rollback_panel_snippet "${snippet}" "${bak}"
-        command -v a2dissite >/dev/null 2>&1 && a2dissite lcmp-panel >/dev/null 2>&1 || true
+        command -v a2dissite >/dev/null 2>&1 && a2dissite lacmp-panel >/dev/null 2>&1 || true
         [[ -n "${listen}" && -f "${listen}" ]] && rm -f "${listen}"
         "${APACHE_CTL}" -t >/dev/null 2>&1 && systemctl reload "${WEB_SERVICE}" >/dev/null 2>&1 || systemctl start "${WEB_SERVICE}" >/dev/null 2>&1 || true
         return 1
@@ -900,7 +900,7 @@ apache_apply() {
     if ! systemctl is-active --quiet "${WEB_SERVICE}"; then
         echo "${WEB_SERVICE} is not active after apply; rolling back." >&2
         rollback_panel_snippet "${snippet}" "${bak}"
-        command -v a2dissite >/dev/null 2>&1 && a2dissite lcmp-panel >/dev/null 2>&1 || true
+        command -v a2dissite >/dev/null 2>&1 && a2dissite lacmp-panel >/dev/null 2>&1 || true
         [[ -n "${listen}" && -f "${listen}" ]] && rm -f "${listen}"
         systemctl start "${WEB_SERVICE}" >/dev/null 2>&1 || true
         return 1
@@ -914,7 +914,7 @@ apache_apply() {
     done
     echo "Port ${PANEL_PORT} is not listening after Apache reload; rolling back." >&2
     rollback_panel_snippet "${snippet}" "${bak}"
-    command -v a2dissite >/dev/null 2>&1 && a2dissite lcmp-panel >/dev/null 2>&1 || true
+    command -v a2dissite >/dev/null 2>&1 && a2dissite lacmp-panel >/dev/null 2>&1 || true
     "${APACHE_CTL}" -t >/dev/null 2>&1 && systemctl reload "${WEB_SERVICE}" >/dev/null 2>&1 || true
     return 1
 }
@@ -933,11 +933,11 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
     echo "  require totp:  ${REQUIRE_TOTP}"
     echo "  firewall:      ${DO_FIREWALL}"
     echo "  fail2ban:      ${DO_FAIL2BAN}"
-    echo "  panel vhost:   ${VHOST_DIR}/lcmp-panel.conf"
-    echo "  fpm pool:      $(pool_dir 2>/dev/null || echo unknown)/lcmp-panel.conf"
-    echo "  sudoers:       /etc/sudoers.d/lcmp-panel"
+    echo "  panel vhost:   ${VHOST_DIR}/lacmp-panel.conf"
+    echo "  fpm pool:      $(pool_dir 2>/dev/null || echo unknown)/lacmp-panel.conf"
+    echo "  sudoers:       /etc/sudoers.d/lacmp-panel"
     echo "  readonly:      ${READONLY_JSON}"
-    if [[ "${STACK}" == "lcmp" ]]; then
+    if [[ "${STACK}" == "lacmp" ]]; then
         echo "  caddy admin:   $(caddy_admin_spec 2>/dev/null || echo unknown)"
         echo "  caddy active:  $(systemctl is-active caddy 2>/dev/null || echo unknown)"
     else
@@ -951,20 +951,20 @@ fi
 # or read broker/src. Broker binary 0750 root:root. web/ owned by WEB_USER.
 install -d -m 0751 -o root -g root "${PREFIX}"
 install -d -m 0750 -o root -g root "${PREFIX}/src"
-install -d -m 0750 -o root -g root /etc/lcmp-panel
+install -d -m 0750 -o root -g root /etc/lacmp-panel
 # 0770 so the FPM user can write php-fpm.log; broker-audit.log stays root:root.
-install -d -m 0770 -o root -g "${WEB_USER}" /var/log/lcmp-panel
-touch /var/log/lcmp-panel/php-fpm.log
-chown "${WEB_USER}:${WEB_USER}" /var/log/lcmp-panel/php-fpm.log
-chmod 0640 /var/log/lcmp-panel/php-fpm.log
-touch /var/log/lcmp-panel/auth-fail.log
-chown "${WEB_USER}:${WEB_USER}" /var/log/lcmp-panel/auth-fail.log
-chmod 0640 /var/log/lcmp-panel/auth-fail.log
-if [[ "${STACK}" == "lcmp" ]]; then
+install -d -m 0770 -o root -g "${WEB_USER}" /var/log/lacmp-panel
+touch /var/log/lacmp-panel/php-fpm.log
+chown "${WEB_USER}:${WEB_USER}" /var/log/lacmp-panel/php-fpm.log
+chmod 0640 /var/log/lacmp-panel/php-fpm.log
+touch /var/log/lacmp-panel/auth-fail.log
+chown "${WEB_USER}:${WEB_USER}" /var/log/lacmp-panel/auth-fail.log
+chmod 0640 /var/log/lacmp-panel/auth-fail.log
+if [[ "${STACK}" == "lacmp" ]]; then
     install -d -m 0755 -o "${WEB_USER}" -g "${WEB_USER}" /var/log/caddy
 fi
-install -d -m 0750 -o root -g root /var/lib/lcmp-panel
-install -d -m 0750 -o root -g root /var/lib/lcmp-panel/staging
+install -d -m 0750 -o root -g root /var/lib/lacmp-panel
+install -d -m 0750 -o root -g root /var/lib/lacmp-panel/staging
 
 rm -rf "${PREFIX}/src"
 cp -a "${ROOT}/broker/src" "${PREFIX}/src"
@@ -976,10 +976,10 @@ install -m 0750 -o root -g root "${ROOT}/broker/broker" "${PREFIX}/broker"
 install -m 0640 -o root -g root "${ROOT}/broker/broker.php" "${PREFIX}/broker.php"
 
 # --- sudoers (templated to the actual WEB_USER + PREFIX) ---------------------
-SUDOERS=/etc/sudoers.d/lcmp-panel
+SUDOERS=/etc/sudoers.d/lacmp-panel
 TMP_SUDOERS="$(mktemp)"
 cat > "${TMP_SUDOERS}" <<EOF
-# LCMP Panel — sudoers (generated by install.sh)
+# LACMP Panel — sudoers (generated by install.sh)
 # ${WEB_USER} may run ONLY this broker, as root, with no password.
 Defaults:${WEB_USER} !requiretty
 Defaults:${WEB_USER} umask=0022
@@ -996,12 +996,12 @@ rm -f "${TMP_SUDOERS}"
 visudo -c >/dev/null
 
 # --- MariaDB panel admin + app user -----------------------------------------
-PANEL_DB="lcmp_panel"
-PANEL_USER="lcmp_panel"
-ADMIN_USER="lcmp_panel_admin"
+PANEL_DB="lacmp_panel"
+PANEL_USER="lacmp_panel"
+ADMIN_USER="lacmp_panel_admin"
 APP_PASS=""
 
-if [[ ! -f /etc/lcmp-panel/broker.json || "${RESET_DB}" -eq 1 ]]; then
+if [[ ! -f /etc/lacmp-panel/broker.json || "${RESET_DB}" -eq 1 ]]; then
     ADMIN_PASS="$(openssl rand -hex 32)"
     APP_PASS="$(openssl rand -hex 24)"
     mariadb_admin <<SQL
@@ -1024,7 +1024,7 @@ SQL
     # observed_services: extra systemd units or 127.0.0.1:<port> to list as
     # observed (no-control). Default []. Example:
     #   "observed_services": ["custom-worker", "127.0.0.1:9000"]
-    cat > /etc/lcmp-panel/broker.json <<EOF
+    cat > /etc/lacmp-panel/broker.json <<EOF
 {
     "stack": "${STACK}",
     "web_server": "${WEB_SERVICE}",
@@ -1032,16 +1032,16 @@ SQL
     "vhost_format": "${VHOST_FORMAT}",
     "paths": {
         "www_root": "${WWW_ROOT}",
-$(if [[ "${STACK}" == "lcmp" ]]; then printf '%s\n' "        \"caddy_confd\": \"${CADDY_CONFD}\"," "        \"caddyfile\": \"${CADDYFILE}\"," "        \"caddy_bin\": \"${CADDY_BIN}\","; fi)
+$(if [[ "${STACK}" == "lacmp" ]]; then printf '%s\n' "        \"caddy_confd\": \"${CADDY_CONFD}\"," "        \"caddyfile\": \"${CADDYFILE}\"," "        \"caddy_bin\": \"${CADDY_BIN}\","; fi)
         "vhost_dir": "${VHOST_DIR}",
         "vhost_available": "${VHOST_AVAILABLE}",
         "web_log_dir": "${WEB_LOG_DIR}",
         "apache_ctl": "${APACHE_CTL}",
-        "audit_log": "/var/log/lcmp-panel/broker-audit.log",
+        "audit_log": "/var/log/lacmp-panel/broker-audit.log",
         "mariadb_server_cnf": "${MARIADB_CNF}",
         "artisan": "${PREFIX}/web/artisan",
-        "staging_dir": "/var/lib/lcmp-panel/staging",
-        "cron_d": "/etc/cron.d/lcmp-panel",
+        "staging_dir": "/var/lib/lacmp-panel/staging",
+        "cron_d": "/etc/cron.d/lacmp-panel",
         "panel_root": "${PREFIX}"
     },
     "web_user": "${WEB_USER}",
@@ -1054,56 +1054,56 @@ $(if [[ "${STACK}" == "lcmp" ]]; then printf '%s\n' "        \"caddy_confd\": \"
     "observed_services": []
 }
 EOF
-    chmod 0600 /etc/lcmp-panel/broker.json
-    chown root:root /etc/lcmp-panel/broker.json
+    chmod 0600 /etc/lacmp-panel/broker.json
+    chown root:root /etc/lacmp-panel/broker.json
     unset ADMIN_PASS
 else
-    echo "Keeping existing /etc/lcmp-panel/broker.json (pass --reset-db to rotate)."
-    LCMP_READONLY_JSON="${READONLY_JSON}" \
-    LCMP_WWW_ROOT="${WWW_ROOT}" \
-    LCMP_CADDY_CONFD="${CADDY_CONFD}" \
-    LCMP_CADDY_BIN="${CADDY_BIN:-}" \
-    LCMP_ARTISAN="${PREFIX}/web/artisan" \
-    LCMP_PREFIX="${PREFIX}" \
-    LCMP_WEB_USER="${WEB_USER}" \
-    LCMP_STACK="${STACK}" \
-    LCMP_WEB_SERVICE="${WEB_SERVICE}" \
-    LCMP_VHOST_FORMAT="${VHOST_FORMAT}" \
-    LCMP_VHOST_DIR="${VHOST_DIR}" \
-    LCMP_VHOST_AVAILABLE="${VHOST_AVAILABLE}" \
-    LCMP_WEB_LOG_DIR="${WEB_LOG_DIR}" \
-    LCMP_APACHE_CTL="${APACHE_CTL}" \
-    python3 - /etc/lcmp-panel/broker.json <<'PY'
+    echo "Keeping existing /etc/lacmp-panel/broker.json (pass --reset-db to rotate)."
+    LACMP_READONLY_JSON="${READONLY_JSON}" \
+    LACMP_WWW_ROOT="${WWW_ROOT}" \
+    LACMP_CADDY_CONFD="${CADDY_CONFD}" \
+    LACMP_CADDY_BIN="${CADDY_BIN:-}" \
+    LACMP_ARTISAN="${PREFIX}/web/artisan" \
+    LACMP_PREFIX="${PREFIX}" \
+    LACMP_WEB_USER="${WEB_USER}" \
+    LACMP_STACK="${STACK}" \
+    LACMP_WEB_SERVICE="${WEB_SERVICE}" \
+    LACMP_VHOST_FORMAT="${VHOST_FORMAT}" \
+    LACMP_VHOST_DIR="${VHOST_DIR}" \
+    LACMP_VHOST_AVAILABLE="${VHOST_AVAILABLE}" \
+    LACMP_WEB_LOG_DIR="${WEB_LOG_DIR}" \
+    LACMP_APACHE_CTL="${APACHE_CTL}" \
+    python3 - /etc/lacmp-panel/broker.json <<'PY'
 import json, os, pathlib, sys
 path = pathlib.Path(sys.argv[1])
 data = json.loads(path.read_text())
-data["readonly_vhosts"] = json.loads(os.environ["LCMP_READONLY_JSON"])
-data["stack"] = os.environ["LCMP_STACK"]
-data["web_server"] = os.environ["LCMP_WEB_SERVICE"]
-data["web_service"] = os.environ["LCMP_WEB_SERVICE"]
-data["vhost_format"] = os.environ["LCMP_VHOST_FORMAT"]
-data.setdefault("paths", {})["www_root"] = os.environ["LCMP_WWW_ROOT"]
-if os.environ.get("LCMP_STACK") == "lcmp":
-    data["paths"]["caddy_confd"] = os.environ["LCMP_CADDY_CONFD"]
+data["readonly_vhosts"] = json.loads(os.environ["LACMP_READONLY_JSON"])
+data["stack"] = os.environ["LACMP_STACK"]
+data["web_server"] = os.environ["LACMP_WEB_SERVICE"]
+data["web_service"] = os.environ["LACMP_WEB_SERVICE"]
+data["vhost_format"] = os.environ["LACMP_VHOST_FORMAT"]
+data.setdefault("paths", {})["www_root"] = os.environ["LACMP_WWW_ROOT"]
+if os.environ.get("LACMP_STACK") == "lacmp":
+    data["paths"]["caddy_confd"] = os.environ["LACMP_CADDY_CONFD"]
     data["paths"]["caddyfile"] = "/etc/caddy/Caddyfile"
-    if os.environ.get("LCMP_CADDY_BIN"):
-        data["paths"]["caddy_bin"] = os.environ["LCMP_CADDY_BIN"]
+    if os.environ.get("LACMP_CADDY_BIN"):
+        data["paths"]["caddy_bin"] = os.environ["LACMP_CADDY_BIN"]
 else:
     for key in ("caddy_confd", "caddyfile", "caddy_bin"):
         data["paths"].pop(key, None)
-data["paths"]["artisan"] = os.environ["LCMP_ARTISAN"]
-data["paths"]["panel_root"] = os.environ["LCMP_PREFIX"]
-data["paths"]["vhost_dir"] = os.environ["LCMP_VHOST_DIR"]
-data["paths"]["vhost_available"] = os.environ["LCMP_VHOST_AVAILABLE"]
-data["paths"]["web_log_dir"] = os.environ["LCMP_WEB_LOG_DIR"]
-if os.environ.get("LCMP_APACHE_CTL"):
-    data["paths"]["apache_ctl"] = os.environ["LCMP_APACHE_CTL"]
-data["web_user"] = os.environ["LCMP_WEB_USER"]
+data["paths"]["artisan"] = os.environ["LACMP_ARTISAN"]
+data["paths"]["panel_root"] = os.environ["LACMP_PREFIX"]
+data["paths"]["vhost_dir"] = os.environ["LACMP_VHOST_DIR"]
+data["paths"]["vhost_available"] = os.environ["LACMP_VHOST_AVAILABLE"]
+data["paths"]["web_log_dir"] = os.environ["LACMP_WEB_LOG_DIR"]
+if os.environ.get("LACMP_APACHE_CTL"):
+    data["paths"]["apache_ctl"] = os.environ["LACMP_APACHE_CTL"]
+data["web_user"] = os.environ["LACMP_WEB_USER"]
 data.setdefault("observed_services", [])
 path.write_text(json.dumps(data, indent=4) + "\n")
 PY
-    chmod 0600 /etc/lcmp-panel/broker.json
-    chown root:root /etc/lcmp-panel/broker.json
+    chmod 0600 /etc/lacmp-panel/broker.json
+    chown root:root /etc/lacmp-panel/broker.json
 fi
 
 # --- web app (preserve .env / storage across re-runs) ------------------------
@@ -1123,8 +1123,8 @@ rsync -a --delete \
     "${ROOT}/web/" "${PREFIX}/web/"
 
 # HTTP-layer Validator copy (no secrets). Privileged src/ stays 0750 root:root.
-install -d -m 0750 -o "${WEB_USER}" -g "${WEB_USER}" "${PREFIX}/web/lib/lcmp-broker"
-rsync -a --delete "${ROOT}/broker/src/" "${PREFIX}/web/lib/lcmp-broker/"
+install -d -m 0750 -o "${WEB_USER}" -g "${WEB_USER}" "${PREFIX}/web/lib/lacmp-broker"
+rsync -a --delete "${ROOT}/broker/src/" "${PREFIX}/web/lib/lacmp-broker/"
 
 install -d -m 0770 -o "${WEB_USER}" -g "${WEB_USER}" \
     "${PREFIX}/web/storage" \
@@ -1149,9 +1149,9 @@ chmod 0750 "${PREFIX}/web" "${PREFIX}/web/public"
 # artisan must stay executable for the scheduler cron
 chmod 0750 "${PREFIX}/web/artisan"
 
-if [[ ! -f "${PREFIX}/web/.env" && -f /etc/lcmp-panel/web.env && "${RESET_DB}" -eq 0 ]]; then
+if [[ ! -f "${PREFIX}/web/.env" && -f /etc/lacmp-panel/web.env && "${RESET_DB}" -eq 0 ]]; then
     echo "Restoring web .env preserved from a previous uninstall."
-    install -m 0640 -o "${WEB_USER}" -g "${WEB_USER}" /etc/lcmp-panel/web.env "${PREFIX}/web/.env"
+    install -m 0640 -o "${WEB_USER}" -g "${WEB_USER}" /etc/lacmp-panel/web.env "${PREFIX}/web/.env"
 fi
 if [[ ! -f "${PREFIX}/web/.env" ]]; then
     cp "${ROOT}/web/.env.example" "${PREFIX}/web/.env"
@@ -1160,7 +1160,7 @@ if [[ ! -f "${PREFIX}/web/.env" ]]; then
     env_set "${PREFIX}/web/.env" APP_ENV production
     env_set "${PREFIX}/web/.env" APP_DEBUG false
     env_set "${PREFIX}/web/.env" DB_SOCKET "${MYSQL_SOCKET}"
-    env_set "${PREFIX}/web/.env" LCMP_WWW_ROOT "${WWW_ROOT}"
+    env_set "${PREFIX}/web/.env" LACMP_WWW_ROOT "${WWW_ROOT}"
 fi
 if [[ -n "${APP_PASS}" ]]; then
     env_set "${PREFIX}/web/.env" DB_PASSWORD "${APP_PASS}"
@@ -1179,7 +1179,7 @@ fi
 chown "${WEB_USER}:${WEB_USER}" "${PREFIX}/web/.env"
 chmod 0640 "${PREFIX}/web/.env"
 
-COMPOSER_HOME="$(mktemp -d /tmp/lcmp-composer.XXXXXX)"
+COMPOSER_HOME="$(mktemp -d /tmp/lacmp-composer.XXXXXX)"
 chown "${WEB_USER}:${WEB_USER}" "${COMPOSER_HOME}"
 export COMPOSER_HOME
 run_as_web() {
@@ -1189,7 +1189,7 @@ run_as_web() {
         bash -c "cd '${PREFIX}/web' && $*"
 }
 
-LOCK_HASH_FILE="/var/lib/lcmp-panel/composer.lock.sha256"
+LOCK_HASH_FILE="/var/lib/lacmp-panel/composer.lock.sha256"
 LOCK_NOW=""
 if [[ -f "${PREFIX}/web/composer.lock" ]]; then
     LOCK_NOW="$(sha256sum "${PREFIX}/web/composer.lock" | awk '{print $1}')"
@@ -1236,8 +1236,8 @@ if [[ -n "${POOL_DIR}" && -d "${POOL_DIR}" ]]; then
     if [[ -n "${FPM_INI}" && -f "${FPM_INI}" ]] && grep -Eq '^disable_functions[[:space:]]*=' "${FPM_INI}"; then
         if grep -Eq '^disable_functions[[:space:]]*=.*(proc_open|proc_get_status)' "${FPM_INI}"; then
             # Keep the first backup forever so uninstall can restore.
-            if [[ ! -f "${FPM_INI}.lcmp-panel.bak" ]]; then
-                cp -a "${FPM_INI}" "${FPM_INI}.lcmp-panel.bak"
+            if [[ ! -f "${FPM_INI}.lacmp-panel.bak" ]]; then
+                cp -a "${FPM_INI}" "${FPM_INI}.lacmp-panel.bak"
             fi
             python3 - "${FPM_INI}" <<'PY'
 import pathlib, re, sys
@@ -1265,19 +1265,19 @@ PY
 import pathlib, re, sys
 pool_dir = pathlib.Path(sys.argv[1])
 block = """
-; --- LCMP-PANEL-LOCKDOWN-BEGIN ---
+; --- LACMP-PANEL-LOCKDOWN-BEGIN ---
 ; proc_open/proc_get_status were removed from php.ini so the panel pool
 ; can use Symfony Process. Public sites keep the original lockdown.
 php_admin_value[disable_functions] = passthru,exec,shell_exec,system,chroot,chgrp,chown,proc_open,proc_get_status,ini_alter,ini_restore
-; --- LCMP-PANEL-LOCKDOWN-END ---
+; --- LACMP-PANEL-LOCKDOWN-END ---
 """
 for path in sorted(pool_dir.glob("*.conf")):
-    if path.name == "lcmp-panel.conf":
+    if path.name == "lacmp-panel.conf":
         continue
     text = path.read_text()
-    if "; --- LCMP-PANEL-LOCKDOWN-BEGIN ---" in text:
+    if "; --- LACMP-PANEL-LOCKDOWN-BEGIN ---" in text:
         text = re.sub(
-            r"\n?; --- LCMP-PANEL-LOCKDOWN-BEGIN ---.*?--- LCMP-PANEL-LOCKDOWN-END ---\n?",
+            r"\n?; --- LACMP-PANEL-LOCKDOWN-BEGIN ---.*?--- LACMP-PANEL-LOCKDOWN-END ---\n?",
             block,
             text,
             count=1,
@@ -1288,16 +1288,16 @@ for path in sorted(pool_dir.glob("*.conf")):
     path.write_text(text if text.endswith("\n") else text + "\n")
 PY
 
-    cat > "${POOL_DIR}/lcmp-panel.conf" <<EOF
-; LCMP Panel dedicated PHP-FPM pool (generated by install.sh).
+    cat > "${POOL_DIR}/lacmp-panel.conf" <<EOF
+; LACMP Panel dedicated PHP-FPM pool (generated by install.sh).
 ; Isolated from www.conf. shell_exec / system / exec stay disabled.
 ; Do not add proc_open to disable_functions here — php.ini already
 ; dropped it so this pool can use Symfony Process.
 
-[lcmp-panel]
+[lacmp-panel]
 user = ${WEB_USER}
 group = ${WEB_USER}
-listen = /run/php/lcmp-panel.sock
+listen = /run/php/lacmp-panel.sock
 listen.owner = ${WEB_USER}
 listen.group = ${WEB_USER}
 listen.mode = 0660
@@ -1309,33 +1309,33 @@ pm.max_requests = 200
 
 php_admin_value[disable_functions] = passthru,exec,shell_exec,system,chroot,chgrp,chown,ini_alter,ini_restore
 php_admin_flag[expose_php] = off
-php_admin_value[open_basedir] = ${PREFIX}/web:/tmp:/dev/urandom:/usr/bin/sudo:/var/log/lcmp-panel
+php_admin_value[open_basedir] = ${PREFIX}/web:/tmp:/dev/urandom:/usr/bin/sudo:/var/log/lacmp-panel
 php_admin_value[sys_temp_dir] = ${PREFIX}/web/storage/framework/tmp
 php_admin_value[upload_tmp_dir] = ${PREFIX}/web/storage/framework/tmp
 php_admin_value[session.save_path] = ${PREFIX}/web/storage/framework/sessions
 php_admin_flag[log_errors] = on
-php_admin_value[error_log] = /var/log/lcmp-panel/php-fpm.log
+php_admin_value[error_log] = /var/log/lacmp-panel/php-fpm.log
 EOF
-    chmod 0644 "${POOL_DIR}/lcmp-panel.conf"
+    chmod 0644 "${POOL_DIR}/lacmp-panel.conf"
 
     FPM_BIN="$(fpm_bin)" || { echo "php-fpm binary for ${PHP_VER} not found" >&2; exit 1; }
     install -d -m 0755 /run/php
-    cat > /etc/tmpfiles.d/lcmp-panel.conf <<EOF
+    cat > /etc/tmpfiles.d/lacmp-panel.conf <<EOF
 d /run/php 0755 ${WEB_USER} ${WEB_USER} -
 EOF
-    systemd-tmpfiles --create /etc/tmpfiles.d/lcmp-panel.conf >/dev/null 2>&1 || true
+    systemd-tmpfiles --create /etc/tmpfiles.d/lacmp-panel.conf >/dev/null 2>&1 || true
     "${FPM_BIN}" -t
     UNIT="$(fpm_unit)"
     RW_PATHS="$(fpm_read_write_paths)"
     install -d -m 0755 "/etc/systemd/system/${UNIT}.service.d"
     if [[ -n "${RW_PATHS}" ]]; then
-        cat > "/etc/systemd/system/${UNIT}.service.d/lcmp-panel.conf" <<EOF
+        cat > "/etc/systemd/system/${UNIT}.service.d/lacmp-panel.conf" <<EOF
 [Service]
 ReadWritePaths=${RW_PATHS}
 EOF
     else
         echo "Warning: no existing paths for FPM ReadWritePaths; not writing a drop-in." >&2
-        rm -f "/etc/systemd/system/${UNIT}.service.d/lcmp-panel.conf"
+        rm -f "/etc/systemd/system/${UNIT}.service.d/lacmp-panel.conf"
     fi
     systemctl daemon-reload
     systemctl restart "${UNIT}"
@@ -1344,13 +1344,13 @@ else
 fi
 
 # --- scheduler cron (idempotent; same body as broker scheduler.install) ------
-cat > /etc/cron.d/lcmp-panel <<EOF
-# LCMP Panel — Laravel scheduler (idempotent)
+cat > /etc/cron.d/lacmp-panel <<EOF
+# LACMP Panel — Laravel scheduler (idempotent)
 SHELL=/bin/sh
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 * * * * * ${WEB_USER} ${PHP_BIN} ${PREFIX}/web/artisan schedule:run >/dev/null 2>&1
 EOF
-chmod 0644 /etc/cron.d/lcmp-panel
+chmod 0644 /etc/cron.d/lacmp-panel
 
 # --- Caddy snippets (localhost tunnel always; optional public HTTPS) ---------
 if [[ "${INSTALL_CADDY_SNIPPET}" -eq 1 ]]; then
@@ -1371,17 +1371,17 @@ if [[ "${INSTALL_CADDY_SNIPPET}" -eq 1 ]]; then
         chown "${WEB_USER}:${WEB_USER}" "${PREFIX}/web/.env"
     fi
 
-    if [[ "${STACK}" == "lcmp" ]]; then
+    if [[ "${STACK}" == "lacmp" ]]; then
     install -d -m 0755 -o "${WEB_USER}" -g "${WEB_USER}" /var/log/caddy
-    touch /var/log/caddy/access_lcmp-panel.log /var/log/caddy/lcmp-panel.log
-    chown "${WEB_USER}:${WEB_USER}" /var/log/caddy/access_lcmp-panel.log /var/log/caddy/lcmp-panel.log
-    chmod 0640 /var/log/caddy/access_lcmp-panel.log /var/log/caddy/lcmp-panel.log
+    touch /var/log/caddy/access_lacmp-panel.log /var/log/caddy/lacmp-panel.log
+    chown "${WEB_USER}:${WEB_USER}" /var/log/caddy/access_lacmp-panel.log /var/log/caddy/lacmp-panel.log
+    chmod 0640 /var/log/caddy/access_lacmp-panel.log /var/log/caddy/lacmp-panel.log
 
-    SNIPPET="${CADDY_CONFD}/lcmp-panel.conf"
+    SNIPPET="${CADDY_CONFD}/lacmp-panel.conf"
     install -d -m 0755 "${CADDY_CONFD}"
     BAK=""
     if [[ -e "${SNIPPET}" ]]; then
-        BAK="${SNIPPET}.lcmp-bak"
+        BAK="${SNIPPET}.lacmp-bak"
         cp -a "${SNIPPET}" "${BAK}"
     fi
 
@@ -1392,9 +1392,9 @@ import pathlib, sys
 snippet, prefix, port, access, domain, ip, email, allow_csv = sys.argv[1:9]
 allow = [a.strip() for a in allow_csv.split(",") if a.strip()]
 web = prefix + "/web/public"
-sock = "unix//run/php/lcmp-panel.sock"
+sock = "unix//run/php/lacmp-panel.sock"
 log_block = """    log {
-        output file /var/log/caddy/access_lcmp-panel.log {
+        output file /var/log/caddy/access_lacmp-panel.log {
             roll_size 16mb
             roll_keep 3
             roll_keep_for 7d
@@ -1413,7 +1413,7 @@ headers_common = """    header {
         -Server
     }"""
 parts = []
-parts.append(f"""# LCMP Panel — generated by install.sh
+parts.append(f"""# LACMP Panel — generated by install.sh
 # Localhost HTTP is the SSH-tunnel fallback (never 0.0.0.0).
 
 http://127.0.0.1:{port} {{
@@ -1451,7 +1451,7 @@ https://{site} {{
         -Server
     }}
 {tls}    log {{
-        output file /var/log/caddy/lcmp-panel.log {{
+        output file /var/log/caddy/lacmp-panel.log {{
             roll_size 16mb
             roll_keep 3
             roll_keep_for 7d
@@ -1470,7 +1470,7 @@ https://{site} {{
     file_server
 {headers_common}
     log {{
-        output file /var/log/caddy/lcmp-panel.log {{
+        output file /var/log/caddy/lacmp-panel.log {{
             roll_size 16mb
             roll_keep 3
             roll_keep_for 7d
@@ -1499,13 +1499,13 @@ PY
     else
         # LAMP (Apache): panel vhost + optional TLS (self-signed or certbot).
         install -d -m 0755 -o "${WEB_USER}" -g "${WEB_USER}" "${WEB_LOG_DIR}"
-        touch "${WEB_LOG_DIR}/lcmp-panel-error.log" "${WEB_LOG_DIR}/lcmp-panel-access.log"
-        chown "${WEB_USER}:${WEB_USER}" "${WEB_LOG_DIR}/lcmp-panel-error.log" "${WEB_LOG_DIR}/lcmp-panel-access.log"
-        chmod 0640 "${WEB_LOG_DIR}/lcmp-panel-error.log" "${WEB_LOG_DIR}/lcmp-panel-access.log"
+        touch "${WEB_LOG_DIR}/lacmp-panel-error.log" "${WEB_LOG_DIR}/lacmp-panel-access.log"
+        chown "${WEB_USER}:${WEB_USER}" "${WEB_LOG_DIR}/lacmp-panel-error.log" "${WEB_LOG_DIR}/lacmp-panel-access.log"
+        chmod 0640 "${WEB_LOG_DIR}/lacmp-panel-error.log" "${WEB_LOG_DIR}/lacmp-panel-access.log"
 
         TLS_CRT="" TLS_KEY=""
         if [[ "${ACCESS}" == "public" ]]; then
-            install -d -m 0750 -o root -g "${WEB_USER}" /etc/lcmp-panel/tls
+            install -d -m 0750 -o root -g "${WEB_USER}" /etc/lacmp-panel/tls
             if [[ -n "${PANEL_DOMAIN}" ]]; then
                 if command -v apt-get >/dev/null 2>&1; then
                     export DEBIAN_FRONTEND=noninteractive
@@ -1523,28 +1523,28 @@ PY
             fi
             if [[ -z "${TLS_CRT}" ]]; then
                 openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
-                    -keyout /etc/lcmp-panel/tls/panel.key \
-                    -out /etc/lcmp-panel/tls/panel.crt \
+                    -keyout /etc/lacmp-panel/tls/panel.key \
+                    -out /etc/lacmp-panel/tls/panel.crt \
                     -subj "/CN=${PANEL_DOMAIN:-${PANEL_IP:-localhost}}" >/dev/null 2>&1
-                chmod 0640 /etc/lcmp-panel/tls/panel.key /etc/lcmp-panel/tls/panel.crt
-                chown root:"${WEB_USER}" /etc/lcmp-panel/tls/panel.key /etc/lcmp-panel/tls/panel.crt
-                TLS_CRT=/etc/lcmp-panel/tls/panel.crt
-                TLS_KEY=/etc/lcmp-panel/tls/panel.key
+                chmod 0640 /etc/lacmp-panel/tls/panel.key /etc/lacmp-panel/tls/panel.crt
+                chown root:"${WEB_USER}" /etc/lacmp-panel/tls/panel.key /etc/lacmp-panel/tls/panel.crt
+                TLS_CRT=/etc/lacmp-panel/tls/panel.crt
+                TLS_KEY=/etc/lacmp-panel/tls/panel.key
             fi
         fi
 
         AVAIL="${VHOST_AVAILABLE:-${VHOST_DIR}}"
         install -d -m 0755 "${AVAIL}" "${VHOST_DIR}"
-        SNIPPET="${AVAIL}/lcmp-panel.conf"
+        SNIPPET="${AVAIL}/lacmp-panel.conf"
         LISTEN_CONF=""
         if [[ -d /etc/apache2/conf-available ]]; then
-            LISTEN_CONF=/etc/apache2/conf-available/lcmp-panel-listen.conf
+            LISTEN_CONF=/etc/apache2/conf-available/lacmp-panel-listen.conf
         elif [[ -d /etc/httpd/conf.d ]]; then
-            LISTEN_CONF=/etc/httpd/conf.d/lcmp-panel-listen.conf
+            LISTEN_CONF=/etc/httpd/conf.d/lacmp-panel-listen.conf
         fi
         BAK=""
         if [[ -e "${SNIPPET}" ]]; then
-            BAK="${SNIPPET}.lcmp-bak"
+            BAK="${SNIPPET}.lacmp-bak"
             cp -a "${SNIPPET}" "${BAK}"
         fi
         ALLOW_CSV="$(IFS=','; echo "${ALLOW_IPS[*]+"${ALLOW_IPS[*]}"}")"
@@ -1554,7 +1554,7 @@ import pathlib, sys
 snippet, listen, prefix, port, access, domain, ip, crt, key, log_dir, allow_csv = sys.argv[1:12]
 allow = [a.strip() for a in allow_csv.split(",") if a.strip()]
 web = prefix + "/web/public"
-sock = "/run/php/lcmp-panel.sock"
+sock = "/run/php/lacmp-panel.sock"
 acl = ""
 if allow:
     acl = "    <RequireAll>\n        Require ip " + " ".join(allow) + "\n    </RequireAll>\n"
@@ -1579,13 +1579,13 @@ if access == "public" and crt and key:
     <FilesMatch \\.php$>
         SetHandler "proxy:unix:{sock}|fcgi://localhost"
     </FilesMatch>
-    ErrorLog  {log_dir}/lcmp-panel-error.log
-    CustomLog {log_dir}/lcmp-panel-access.log combined
+    ErrorLog  {log_dir}/lacmp-panel-error.log
+    CustomLog {log_dir}/lacmp-panel-access.log combined
 </VirtualHost>
 """
 else:
     listen_body = f"Listen 127.0.0.1:{port}\n"
-    http = f"""# LCMP Panel — generated by install.sh
+    http = f"""# LACMP Panel — generated by install.sh
 <VirtualHost 127.0.0.1:{port}>
     ServerName 127.0.0.1
     DocumentRoot {web}
@@ -1597,11 +1597,11 @@ else:
     <FilesMatch \\.php$>
         SetHandler "proxy:unix:{sock}|fcgi://localhost"
     </FilesMatch>
-    ErrorLog  {log_dir}/lcmp-panel-error.log
-    CustomLog {log_dir}/lcmp-panel-access.log combined
+    ErrorLog  {log_dir}/lacmp-panel-error.log
+    CustomLog {log_dir}/lacmp-panel-access.log combined
 </VirtualHost>
 """
-pathlib.Path(snippet).write_text("# LCMP Panel — generated by install.sh\n" + http + ssl)
+pathlib.Path(snippet).write_text("# LACMP Panel — generated by install.sh\n" + http + ssl)
 if listen:
     pathlib.Path(listen).write_text(listen_body)
 PY
@@ -1621,7 +1621,7 @@ fi
 
 # Persist access settings for uninstall (no secrets).
 _ALLOW_CSV="$(IFS=','; echo "${ALLOW_IPS[*]+"${ALLOW_IPS[*]}"}")"
-cat > /etc/lcmp-panel/access.env <<EOF
+cat > /etc/lacmp-panel/access.env <<EOF
 ACCESS_MODE=${ACCESS}
 PANEL_PORT=${PANEL_PORT}
 PANEL_HAS_DOMAIN=$([ -n "${PANEL_DOMAIN}" ] && echo 1 || echo 0)
@@ -1629,7 +1629,7 @@ PANEL_ALLOW_IPS=${_ALLOW_CSV}
 STACK=${STACK}
 WEB_SERVICE=${WEB_SERVICE}
 EOF
-chmod 0640 /etc/lcmp-panel/access.env
+chmod 0640 /etc/lacmp-panel/access.env
 
 # --- firewall + fail2ban (public mode defaults; overridable) ----------------
 if [[ "${DO_FAIL2BAN}" == "true" ]]; then
@@ -1642,12 +1642,12 @@ if [[ "${DO_FAIL2BAN}" == "true" ]]; then
     fi
 
     install -d -m 0755 /etc/fail2ban/filter.d /etc/fail2ban/jail.d
-    install -m 0644 "${ROOT}/deploy/fail2ban/filter.d/lcmp-panel.conf" /etc/fail2ban/filter.d/lcmp-panel.conf
-    cat > /etc/fail2ban/jail.d/lcmp-panel.conf <<EOF
-[lcmp-panel]
+    install -m 0644 "${ROOT}/deploy/fail2ban/filter.d/lacmp-panel.conf" /etc/fail2ban/filter.d/lacmp-panel.conf
+    cat > /etc/fail2ban/jail.d/lacmp-panel.conf <<EOF
+[lacmp-panel]
 enabled  = true
-filter   = lcmp-panel
-logpath  = /var/log/lcmp-panel/auth-fail.log
+filter   = lacmp-panel
+logpath  = /var/log/lacmp-panel/auth-fail.log
 backend  = auto
 maxretry = 5
 findtime = 600
@@ -1677,17 +1677,17 @@ if [[ "${DO_FIREWALL}" == "true" ]]; then
         if ! echo "$(ufw status 2>/dev/null | head -n1 || true)" | grep -qi inactive; then
             if [[ ${#ALLOW_IPS[@]} -gt 0 ]]; then
                 for cidr in "${ALLOW_IPS[@]}"; do
-                    ufw allow from "${cidr}" to any port "${PANEL_PORT}" proto tcp comment 'lcmp-panel' >/dev/null || true
+                    ufw allow from "${cidr}" to any port "${PANEL_PORT}" proto tcp comment 'lacmp-panel' >/dev/null || true
                 done
             else
-                ufw allow "${PANEL_PORT}/tcp" comment 'lcmp-panel' >/dev/null || true
+                ufw allow "${PANEL_PORT}/tcp" comment 'lacmp-panel' >/dev/null || true
             fi
-            echo "UFW_USED=1" >> /etc/lcmp-panel/access.env
+            echo "UFW_USED=1" >> /etc/lacmp-panel/access.env
         fi
     elif command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active firewalld >/dev/null 2>&1; then
         firewall-cmd --permanent --add-port="${PANEL_PORT}/tcp" >/dev/null
         firewall-cmd --reload >/dev/null
-        echo "FIREWALLD_USED=1" >> /etc/lcmp-panel/access.env
+        echo "FIREWALLD_USED=1" >> /etc/lacmp-panel/access.env
     else
         echo "Warning: no ufw/firewalld; open TCP ${PANEL_PORT} on the host firewall." >&2
     fi
@@ -1711,16 +1711,16 @@ chmod -R go-rwx "${PREFIX}/src"
 find "${PREFIX}/src" -type d -exec chmod 0750 {} \;
 find "${PREFIX}/src" -type f -exec chmod 0640 {} \;
 chown -R root:root "${PREFIX}/src"
-if [[ -f /etc/lcmp-panel/broker.json ]]; then
-    chmod 0600 /etc/lcmp-panel/broker.json
-    chown root:root /etc/lcmp-panel/broker.json
+if [[ -f /etc/lacmp-panel/broker.json ]]; then
+    chmod 0600 /etc/lacmp-panel/broker.json
+    chown root:root /etc/lacmp-panel/broker.json
 fi
 
 echo
 echo "Installed."
 echo "  Broker:    ${PREFIX}/broker"
 echo "  Web:       ${PREFIX}/web"
-echo "  Sudoers:   /etc/sudoers.d/lcmp-panel"
+echo "  Sudoers:   /etc/sudoers.d/lacmp-panel"
 echo "  Access:    ${ACCESS}"
 echo "  Stack:     ${STACK} (${WEB_SERVICE})"
 echo "  Port:      ${PANEL_PORT}"
@@ -1733,7 +1733,7 @@ else
     fi
 fi
 if [[ "${DO_FAIL2BAN}" == "true" ]]; then
-    echo "  fail2ban:  on (jail lcmp-panel)"
+    echo "  fail2ban:  on (jail lacmp-panel)"
 else
     echo "  fail2ban:  off"
 fi

@@ -4,7 +4,7 @@ namespace App\Services\Broker;
 
 /**
  * Local / test stand-in. Mirrors broker JSON shapes so the UI can be
- * developed on a Mac without sudo or an LCMP host.
+ * developed on a Mac without sudo or an LACMP host.
  */
 final class FakeBroker
 {
@@ -62,7 +62,7 @@ final class FakeBroker
         ];
         $this->databases = [
             ['name' => 'mysql', 'size_bytes' => 1_200_000, 'table_count' => 31, 'users' => [], 'protected' => true],
-            ['name' => 'lcmp_panel', 'size_bytes' => 80_000, 'table_count' => 6, 'users' => [['user' => 'lcmp_panel', 'host' => 'localhost']], 'protected' => true],
+            ['name' => 'lacmp_panel', 'size_bytes' => 80_000, 'table_count' => 6, 'users' => [['user' => 'lacmp_panel', 'host' => 'localhost']], 'protected' => true],
             ['name' => 'projob', 'size_bytes' => 42_000_000, 'table_count' => 48, 'users' => [['user' => 'projob', 'host' => 'localhost']], 'protected' => false],
         ];
     }
@@ -92,11 +92,11 @@ final class FakeBroker
                 'php.ini.get' => ['php_version' => $args[0] ?? '8.4', 'path' => '/etc/php/8.4/fpm/php.ini', 'values' => ['memory_limit' => '128M', 'upload_max_filesize' => '128M', 'post_max_size' => '128M', 'max_execution_time' => '300', 'max_input_time' => '300', 'max_file_uploads' => '20', 'expose_php' => 'Off']],
                 'php.ini.set' => ['php_version' => $args[0] ?? '8.4', 'key' => $args[1] ?? '', 'value' => $args[2] ?? ''],
                 'mariadb.bind.status' => ['listening_public' => true, 'bind_address_config' => '0.0.0.0', 'config_path' => '/etc/mysql/mariadb.conf.d/50-server.cnf'],
-                'mariadb.bind.fix' => ['bind_address' => '127.0.0.1', 'config_path' => '/etc/mysql/mariadb.conf.d/50-server.cnf', 'backup_path' => '/etc/mysql/mariadb.conf.d/50-server.cnf.lcmp-bak-1', 'restarted' => true],
+                'mariadb.bind.fix' => ['bind_address' => '127.0.0.1', 'config_path' => '/etc/mysql/mariadb.conf.d/50-server.cnf', 'backup_path' => '/etc/mysql/mariadb.conf.d/50-server.cnf.lacmp-bak-1', 'restarted' => true],
                 'mariadb.bind.rollback' => ['config_path' => '/etc/mysql/mariadb.conf.d/50-server.cnf', 'restored_from' => (string) ($args[0] ?? ''), 'restarted' => true],
                 'system.reboot-required' => ['required' => true, 'packages' => ['linux-image-6.8']],
                 'system.reboot' => $this->requireConfirm($stdin, 'REBOOT', ['accepted' => true]),
-                'scheduler.install' => ['path' => '/etc/cron.d/lcmp-panel', 'artisan' => '/usr/local/lib/lcmp-panel/web/artisan', 'user' => 'caddy'],
+                'scheduler.install' => ['path' => '/etc/cron.d/lacmp-panel', 'artisan' => '/usr/local/lib/lacmp-panel/web/artisan', 'user' => 'caddy'],
                 'updates.list' => ['total' => 12, 'security' => 3, 'source' => 'apt-check', 'packages' => [
                     ['name' => 'openssl', 'security' => true, 'raw' => 'Inst openssl [3.0] (3.0.1 Ubuntu:24.04/noble-security)'],
                     ['name' => 'curl', 'security' => false, 'raw' => 'Inst curl [8.5] (8.5.1 Ubuntu:24.04/noble-updates)'],
@@ -107,14 +107,14 @@ final class FakeBroker
                     'domain' => 'projob.az', 'ok' => true, 'issuer' => 'C=US, O=Let\'s Encrypt', 'valid_from' => 'Aug  1 00:00:00 2026 GMT',
                     'valid_to' => 'Oct 30 00:00:00 2026 GMT', 'days_remaining' => 63, 'renewal' => 'ok',
                 ]]],
-                'backup.db', 'backup.files', 'backup.caddy' => ['key' => 'lcmp/db/all/20260828T000000Z.bin', 'size' => 1024, 'kind' => 'db', 'name' => 'all', 'sha256' => str_repeat('a', 64)],
+                'backup.db', 'backup.files', 'backup.caddy' => ['key' => 'lacmp/db/all/20260828T000000Z.bin', 'size' => 1024, 'kind' => 'db', 'name' => 'all', 'sha256' => str_repeat('a', 64)],
                 'backup.list' => ['objects' => [[
-                    'key' => 'lcmp/db/all/20260828T000000Z.bin', 'size' => 1024, 'last_modified' => '2026-08-28T00:00:00Z', 'kind' => 'db', 'name' => 'all',
+                    'key' => 'lacmp/db/all/20260828T000000Z.bin', 'size' => 1024, 'last_modified' => '2026-08-28T00:00:00Z', 'kind' => 'db', 'name' => 'all',
                 ]]],
                 'backup.prune' => ['deleted' => [], 'keep' => 14],
                 'backup.restore.db' => $this->restoreDb($stdin),
                 'backup.restore.files' => $this->restoreFiles($stdin),
-                'spaces.test' => ['ok' => true, 'bucket' => 'lcmp', 'region' => 'fra1'],
+                'spaces.test' => ['ok' => true, 'bucket' => 'lacmp', 'region' => 'fra1'],
                 'auth.audit' => ['path' => '/var/log/auth.log', 'missing' => false, 'success' => [['user' => 'root', 'ip' => '127.0.0.1', 'method' => 'publickey', 'line' => 'Accepted publickey for root from 127.0.0.1']], 'failed' => [], 'failed_count' => 0, 'new_root_ips' => []],
                 'firewall.status' => ['ufw' => ['installed' => true, 'status' => "Status: active\nTo 22 ALLOW  Anywhere"], 'fail2ban' => ['installed' => false]],
                 'firewall.unban' => ['ip' => $args[0] ?? '', 'jail' => $args[1] ?? 'sshd'],
@@ -177,7 +177,7 @@ final class FakeBroker
     private function versionAll(): array
     {
         return [
-            'web' => ['version' => '2.10.0', 'raw' => 'v2.10.0', 'service' => 'caddy', 'label' => 'Caddy', 'stack' => 'lcmp'],
+            'web' => ['version' => '2.10.0', 'raw' => 'v2.10.0', 'service' => 'caddy', 'label' => 'Caddy', 'stack' => 'lacmp'],
             'caddy' => ['version' => '2.10.0', 'raw' => 'v2.10.0'],
             'mariadb' => ['version' => '11.4.5', 'raw' => 'mariadb from 11.4.5-MariaDB'],
             'php' => ['version' => '8.4.5', 'raw' => 'PHP 8.4.5 (cli)', 'installed' => ['8.4']],
@@ -224,7 +224,7 @@ final class FakeBroker
     {
         $target = (string) ($stdin['target'] ?? '');
         $overwrite = (bool) ($stdin['overwrite'] ?? false);
-        $existing = in_array($target, ['projob', 'mysql', 'lcmp_panel'], true);
+        $existing = in_array($target, ['projob', 'mysql', 'lacmp_panel'], true);
         if ($existing && ! $overwrite) {
             throw new BrokerCallException('Target database exists. Restore into a new name, or send overwrite confirm OVERWRITE.', 3);
         }
@@ -261,7 +261,7 @@ final class FakeBroker
             $this->requireConfirm($stdin, $confirmToken, []);
         }
         return [
-            'staged' => '/var/lib/lcmp-panel/staging/restore-'.$site,
+            'staged' => '/var/lib/lacmp-panel/staging/restore-'.$site,
             'preview' => [$site.'/index.php'],
             'applied' => $apply,
             'forced_readonly' => $protected && $force && $apply,

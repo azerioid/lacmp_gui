@@ -10,7 +10,7 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 #[Layout('layouts.guest')]
-#[Title('Two-factor · LCMP Panel')]
+#[Title('Two-factor · LACMP Panel')]
 class TwoFactorChallenge extends Component
 {
     public string $code = '';

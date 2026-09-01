@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Web;
+namespace LacmpPanel\Broker\Web;
 
-use LcmpPanel\Broker\BrokerException;
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\BrokerException;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Runtime;
 
 final class ApacheDriver implements WebServerDriver
 {
@@ -85,7 +85,7 @@ final class ApacheDriver implements WebServerDriver
         if (!$runtime->isDir($dir)) {
             $runtime->mkdir($dir, 0755);
         }
-        $tmp = $confPath . '.lcmp-tmp';
+        $tmp = $confPath . '.lacmp-tmp';
         $runtime->writeFile($tmp, $contents, 0644);
         try {
             $runtime->rename($tmp, $confPath);

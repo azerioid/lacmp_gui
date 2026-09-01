@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Tests;
+namespace LacmpPanel\Broker\Tests;
 
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\FakeRuntime;
-use LcmpPanel\Broker\Kernel;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\FakeRuntime;
+use LacmpPanel\Broker\Kernel;
 use PHPUnit\Framework\TestCase;
 
 final class KernelDispatchTest extends TestCase
@@ -170,7 +170,7 @@ final class KernelDispatchTest extends TestCase
             ['broker', 'db.add', 'shopdb', 'shopuser'],
             ['password' => 'abcdefghijklmnopqrst']
         );
-        $audit = $rt->files['/var/log/lcmp-panel/broker-audit.log'] ?? '';
+        $audit = $rt->files['/var/log/lacmp-panel/broker-audit.log'] ?? '';
         $this->assertStringNotContainsString('abcdefghijklmnopqrst', $audit);
         $this->assertStringContainsString('[redacted]', $audit);
     }

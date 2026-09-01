@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Actions;
+namespace LacmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\BrokerException;
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\BrokerException;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Runtime;
 
 final class SchedulerInstall
 {
@@ -21,7 +21,7 @@ final class SchedulerInstall
         if (!preg_match('/^[a-z_][a-z0-9_-]{0,31}$/', $user)) {
             throw new BrokerException('Invalid web user.', 2);
         }
-        $body = "# LCMP Panel — Laravel scheduler (idempotent)\n"
+        $body = "# LACMP Panel — Laravel scheduler (idempotent)\n"
             . "SHELL=/bin/sh\n"
             . "PATH=/usr/sbin:/usr/bin:/sbin:/bin\n"
             . "* * * * * {$user} /usr/bin/php {$artisan} schedule:run >/dev/null 2>&1\n";

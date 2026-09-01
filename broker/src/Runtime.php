@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker;
+namespace LacmpPanel\Broker;
 
 interface Runtime
 {

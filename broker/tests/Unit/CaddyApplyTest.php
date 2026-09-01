@@ -1,12 +1,12 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Tests;
+namespace LacmpPanel\Broker\Tests;
 
-use LcmpPanel\Broker\CaddyApply;
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\FakeRuntime;
-use LcmpPanel\Broker\Kernel;
+use LacmpPanel\Broker\CaddyApply;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\FakeRuntime;
+use LacmpPanel\Broker\Kernel;
 use PHPUnit\Framework\TestCase;
 
 final class CaddyApplyTest extends TestCase

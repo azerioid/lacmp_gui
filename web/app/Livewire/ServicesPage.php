@@ -4,13 +4,13 @@ namespace App\Livewire;
 
 use App\Services\Broker\BrokerCallException;
 use App\Services\Broker\BrokerClient;
-use LcmpPanel\Broker\Validator;
+use LacmpPanel\Broker\Validator;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 #[Layout('layouts.app')]
-#[Title('Services · LCMP Panel')]
+#[Title('Services · LACMP Panel')]
 class ServicesPage extends Component
 {
     public array $controlled = [];
@@ -85,7 +85,7 @@ class ServicesPage extends Component
     {
         return view('livewire.services')->layoutData([
             'heading' => 'Services',
-            'sub' => 'Only LCMP units can be started or stopped',
+            'sub' => 'Only LACMP units can be started or stopped',
         ]);
     }
 }

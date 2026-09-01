@@ -1,13 +1,13 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Tests;
+namespace LacmpPanel\Broker\Tests;
 
-use LcmpPanel\Broker\BrokerException;
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\FakeRuntime;
-use LcmpPanel\Broker\Web\ApacheDriver;
-use LcmpPanel\Broker\Web\CaddyDriver;
+use LacmpPanel\Broker\BrokerException;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\FakeRuntime;
+use LacmpPanel\Broker\Web\ApacheDriver;
+use LacmpPanel\Broker\Web\CaddyDriver;
 use PHPUnit\Framework\TestCase;
 
 final class WebServerMainConfigTest extends TestCase
@@ -40,10 +40,10 @@ final class WebServerMainConfigTest extends TestCase
     public function test_load_coerces_spaced_caddyfile_typo(): void
     {
         $rt = new FakeRuntime();
-        $rt->files['/etc/lcmp-panel/broker.json'] = json_encode([
+        $rt->files['/etc/lacmp-panel/broker.json'] = json_encode([
             'paths' => ['caddyfile' => '/etc/caddy/Caddy file'],
         ], JSON_THROW_ON_ERROR);
-        $cfg = Config::load('/etc/lcmp-panel/broker.json', $rt);
+        $cfg = Config::load('/etc/lacmp-panel/broker.json', $rt);
         $this->assertSame('/etc/caddy/Caddyfile', $cfg->caddyfile);
     }
 

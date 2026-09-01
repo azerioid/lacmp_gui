@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Tests;
+namespace LacmpPanel\Broker\Tests;
 
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\FakeRuntime;
-use LcmpPanel\Broker\Kernel;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\FakeRuntime;
+use LacmpPanel\Broker\Kernel;
 use PHPUnit\Framework\TestCase;
 
 final class VhostAddRollbackTest extends TestCase
@@ -127,10 +127,10 @@ final class VhostAddRollbackTest extends TestCase
         $this->assertNotSame(0, $code);
     }
 
-    public function test_prefers_lcmp_default_pool_socket_not_panel_pool(): void
+    public function test_prefers_lacmp_default_pool_socket_not_panel_pool(): void
     {
         $this->rt->files['/run/php/php-fpm.sock'] = '';
-        $this->rt->files['/run/php/lcmp-panel.sock'] = '';
+        $this->rt->files['/run/php/lacmp-panel.sock'] = '';
         $this->rt->script(['/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'], 0, 'Valid configuration');
 
         ob_start();
@@ -139,7 +139,7 @@ final class VhostAddRollbackTest extends TestCase
         $this->assertSame(0, $code);
         $conf = $this->rt->files['/etc/caddy/conf.d/pool.example.com.conf'];
         $this->assertStringContainsString('php_fastcgi unix//run/php/php-fpm.sock', $conf);
-        $this->assertStringNotContainsString('lcmp-panel.sock', $conf);
+        $this->assertStringNotContainsString('lacmp-panel.sock', $conf);
     }
 
     public function test_refuses_readonly_domain_create(): void

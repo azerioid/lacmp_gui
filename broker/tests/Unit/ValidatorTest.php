@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Tests;
+namespace LacmpPanel\Broker\Tests;
 
-use LcmpPanel\Broker\BrokerException;
-use LcmpPanel\Broker\FakeRuntime;
-use LcmpPanel\Broker\Validator;
+use LacmpPanel\Broker\BrokerException;
+use LacmpPanel\Broker\FakeRuntime;
+use LacmpPanel\Broker\Validator;
 use PHPUnit\Framework\TestCase;
 
 final class ValidatorTest extends TestCase
@@ -74,7 +74,7 @@ final class ValidatorTest extends TestCase
             ['semi;colon'],
             ["quote'name"],
             ['mysql'],
-            ['lcmp_panel'],
+            ['lacmp_panel'],
             [''],
             [str_repeat('a', 33)],
             ['root; DROP TABLE users'],
@@ -155,7 +155,7 @@ final class ValidatorTest extends TestCase
     public function test_typed_confirm_and_object_key(): void
     {
         $this->assertSame('REBOOT', Validator::typedConfirm('REBOOT', 'REBOOT'));
-        $this->assertSame('lcmp/db/all/x.bin', Validator::objectKey('lcmp/db/all/x.bin'));
+        $this->assertSame('lacmp/db/all/x.bin', Validator::objectKey('lacmp/db/all/x.bin'));
         $this->expectException(BrokerException::class);
         Validator::objectKey('../etc/passwd');
     }

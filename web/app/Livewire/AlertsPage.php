@@ -11,7 +11,7 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 #[Layout('layouts.app')]
-#[Title('Alerts · LCMP Panel')]
+#[Title('Alerts · LACMP Panel')]
 class AlertsPage extends Component
 {
     public bool $service_down = true;
@@ -97,7 +97,7 @@ class AlertsPage extends Component
 
     public function testTelegram(TelegramNotifier $telegram): void
     {
-        if ($telegram->send('LCMP Panel test message')) {
+        if ($telegram->send('LACMP Panel test message')) {
             $this->flash = 'Test message sent.';
             $this->error = null;
         } else {

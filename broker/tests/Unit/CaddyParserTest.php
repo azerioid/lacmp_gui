@@ -1,14 +1,14 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Tests;
+namespace LacmpPanel\Broker\Tests;
 
-use LcmpPanel\Broker\CaddyParser;
+use LacmpPanel\Broker\CaddyParser;
 use PHPUnit\Framework\TestCase;
 
 final class CaddyParserTest extends TestCase
 {
-    public function test_parses_lcmp_php_vhost(): void
+    public function test_parses_lacmp_php_vhost(): void
     {
         $contents = file_get_contents(__DIR__ . '/../fixtures/vhost-php.conf');
         $parsed = CaddyParser::parseFile('/etc/caddy/conf.d/example.com.conf', $contents, ['projob.az']);
@@ -45,11 +45,11 @@ final class CaddyParserTest extends TestCase
         $contents = <<<'CADDY'
 http://127.0.0.1:3169 {
     bind 127.0.0.1
-    root * /usr/local/lib/lcmp-panel/web/public
-    php_fastcgi unix//run/php/lcmp-panel.sock
+    root * /usr/local/lib/lacmp-panel/web/public
+    php_fastcgi unix//run/php/lacmp-panel.sock
 }
 CADDY;
-        $parsed = CaddyParser::parseFile('/etc/caddy/conf.d/lcmp-panel.conf', $contents, ['projob.az']);
+        $parsed = CaddyParser::parseFile('/etc/caddy/conf.d/lacmp-panel.conf', $contents, ['projob.az']);
         $this->assertTrue($parsed['readonly']);
         $this->assertSame('php', $parsed['type']);
     }

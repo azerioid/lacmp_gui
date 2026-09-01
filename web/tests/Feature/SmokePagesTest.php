@@ -27,7 +27,7 @@ class SmokePagesTest extends TestCase
             ->assertSee('projob.az', false)
             ->assertSee('read-only', false);
 
-        $this->get('/databases')->assertOk()->assertSee('lcmp_panel', false);
+        $this->get('/databases')->assertOk()->assertSee('lacmp_panel', false);
         $this->get('/services')->assertOk()->assertSee('observed', false);
         $this->get('/logs')->assertOk()->assertSee('Web server access', false);
         $this->get('/settings')->assertOk()->assertSee('Idle timeout', false);

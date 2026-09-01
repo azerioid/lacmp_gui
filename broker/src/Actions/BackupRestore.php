@@ -1,14 +1,14 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Actions;
+namespace LacmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\ArchiveCrypto;
-use LcmpPanel\Broker\BrokerException;
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Runtime;
-use LcmpPanel\Broker\SpacesClient;
-use LcmpPanel\Broker\Validator;
+use LacmpPanel\Broker\ArchiveCrypto;
+use LacmpPanel\Broker\BrokerException;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\SpacesClient;
+use LacmpPanel\Broker\Validator;
 
 final class BackupRestore
 {
@@ -103,7 +103,7 @@ final class BackupRestore
         }
         $source = $runtime->isDir($staging . '/' . $site) ? $staging . '/' . $site : $staging;
         $stamp = preg_replace('/[^0-9TZ]/', '', $runtime->now()) ?: gmdate('YmdHis');
-        $backup = $dest . '.lcmp-pre-restore-' . $stamp;
+        $backup = $dest . '.lacmp-pre-restore-' . $stamp;
         $hadLive = $runtime->isDir($dest) || $runtime->fileExists($dest);
         if ($hadLive) {
             $aside = $runtime->exec(['/bin/mv', $dest, $backup], null, 30);

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# lcmp_gui.sh — thin preflight wrapper for LCMP Panel.
+# lacmp_gui.sh — thin preflight wrapper for LACMP Panel.
 # Repo: https://github.com/azerioid/lacmp_gui
 #
-# REQUIREMENT: teddysun/lcmp (Caddy) or teddysun/lamp (Apache) must already be installed.
+# REQUIREMENT: teddysun/lacmp (Caddy) or teddysun/lamp (Apache) must already be installed.
 # This wrapper never installs, stops, or reconfigures the stack's sites.
 #
 # Usage (as root, from a clone of this repo):
-#   chmod +x lcmp_gui.sh
-#   ./lcmp_gui.sh
+#   chmod +x lacmp_gui.sh
+#   ./lacmp_gui.sh
 #
-# Flags are forwarded to deploy/install.sh. Run ./lcmp_gui.sh --help
+# Flags are forwarded to deploy/install.sh. Run ./lacmp_gui.sh --help
 #
 set -euo pipefail
 
@@ -33,7 +33,7 @@ if [[ ! -f "${INSTALLER}" ]]; then
   This looks like a partial clone. Re-clone the full repository:
 
     git clone https://github.com/azerioid/lacmp_gui.git
-    cd lacmp_gui && chmod +x lcmp_gui.sh && ./lcmp_gui.sh" >&2
+    cd lacmp_gui && chmod +x lacmp_gui.sh && ./lacmp_gui.sh" >&2
     exit 1
 fi
 
@@ -91,13 +91,13 @@ esac
 ok "Detected supported OS: ${PRETTY_NAME:-$OS_ID $OS_VER} (package manager: ${PKG_MGR})"
 
 # --------------------------------------------------------------------------
-# LCMP (Caddy) or LAMP (Apache) must already be installed.
+# LACMP (Caddy) or LAMP (Apache) must already be installed.
 # --------------------------------------------------------------------------
-HAS_LCMP=0
+HAS_LACMP=0
 HAS_LAMP=0
-LCMP_BIN="$(command -v lcmp 2>/dev/null || true)"
+LACMP_BIN="$(command -v lacmp 2>/dev/null || true)"
 LAMP_BIN="$(command -v lamp 2>/dev/null || true)"
-[[ -n "${LCMP_BIN}" && -x "${LCMP_BIN}" ]] && HAS_LCMP=1
+[[ -n "${LACMP_BIN}" && -x "${LACMP_BIN}" ]] && HAS_LACMP=1
 [[ -n "${LAMP_BIN}" && -x "${LAMP_BIN}" ]] && HAS_LAMP=1
 
 STACK_ARG="auto"
@@ -116,18 +116,18 @@ for arg in "$@"; do
 done
 STACK_ARG="$(echo "${STACK_ARG}" | tr '[:upper:]' '[:lower:]')"
 case "${STACK_ARG}" in
-    auto|lcmp|lamp|"") STACK_ARG="${STACK_ARG:-auto}" ;;
-    *) die "Invalid --stack=${STACK_ARG} (use auto|lcmp|lamp)." ;;
+    auto|lacmp|lamp|"") STACK_ARG="${STACK_ARG:-auto}" ;;
+    *) die "Invalid --stack=${STACK_ARG} (use auto|lacmp|lamp)." ;;
 esac
 
-if [[ "${HAS_LCMP}" -eq 0 && "${HAS_LAMP}" -eq 0 ]]; then
-    die "Neither LCMP nor LAMP is installed (no 'lcmp' or 'lamp' command).
+if [[ "${HAS_LACMP}" -eq 0 && "${HAS_LAMP}" -eq 0 ]]; then
+    die "Neither LACMP nor LAMP is installed (no 'lacmp' or 'lamp' command).
 
-  This panel is a web front-end for teddysun LCMP or LAMP — install one first:
+  This panel is a web front-end for teddysun LACMP or LAMP — install one first:
 
     ${PKG_MGR} -y install wget git
-    git clone https://github.com/teddysun/lcmp.git   # Caddy stack
-    cd lcmp && chmod +x *.sh && ./lcmp.sh
+    git clone https://github.com/teddysun/lacmp.git   # Caddy stack
+    cd lacmp && chmod +x *.sh && ./lacmp.sh
 
     # or:
     git clone https://github.com/teddysun/lamp.git   # Apache stack
@@ -136,8 +136,8 @@ if [[ "${HAS_LCMP}" -eq 0 && "${HAS_LAMP}" -eq 0 ]]; then
   Then re-run this installer. This script will never install or remove the stack."
 fi
 
-if [[ "${HAS_LCMP}" -eq 1 ]] && ! lcmp version >/dev/null 2>&1; then
-    warn "'lcmp' is present but 'lcmp version' failed — the install may be broken."
+if [[ "${HAS_LACMP}" -eq 1 ]] && ! lacmp version >/dev/null 2>&1; then
+    warn "'lacmp' is present but 'lacmp version' failed — the install may be broken."
 fi
 if [[ "${HAS_LAMP}" -eq 1 ]] && ! lamp version >/dev/null 2>&1; then
     warn "'lamp' is present but 'lamp version' failed — the install may be broken."
@@ -159,18 +159,18 @@ command -v apache2ctl >/dev/null 2>&1 && WEB_OK=1
 [[ "${WEB_OK}" -eq 1 ]] || missing+=("web-server (caddy or apache)")
 if [[ ${#missing[@]} -gt 0 ]]; then
     die "Stack command found, but these components are missing: ${missing[*]}.
-  Re-run ./lcmp.sh or ./lamp.sh and make sure the web server, MariaDB and PHP are installed."
+  Re-run ./lacmp.sh or ./lamp.sh and make sure the web server, MariaDB and PHP are installed."
 fi
-if [[ "${STACK_ARG}" == "lcmp" && "${HAS_LCMP}" -eq 0 ]]; then
-    die "--stack=lcmp was set, but the 'lcmp' command was not found. Install teddysun/lcmp first."
+if [[ "${STACK_ARG}" == "lacmp" && "${HAS_LACMP}" -eq 0 ]]; then
+    die "--stack=lacmp was set, but the 'lacmp' command was not found. Install teddysun/lacmp first."
 fi
 if [[ "${STACK_ARG}" == "lamp" && "${HAS_LAMP}" -eq 0 ]]; then
     die "--stack=lamp was set, but the 'lamp' command was not found. Install teddysun/lamp first."
 fi
-if [[ "${HAS_LCMP}" -eq 1 && "${HAS_LAMP}" -eq 1 ]]; then
-    ok "Both LCMP and LAMP commands are present; default --stack=auto uses the web server on :80/:443."
-elif [[ "${HAS_LCMP}" -eq 1 ]]; then
-    ok "LCMP (Caddy) is installed."
+if [[ "${HAS_LACMP}" -eq 1 && "${HAS_LAMP}" -eq 1 ]]; then
+    ok "Both LACMP and LAMP commands are present; default --stack=auto uses the web server on :80/:443."
+elif [[ "${HAS_LACMP}" -eq 1 ]]; then
+    ok "LACMP (Caddy) is installed."
 else
     ok "LAMP (Apache) is installed."
 fi

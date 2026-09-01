@@ -1,15 +1,15 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Actions;
+namespace LacmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\ArchiveCrypto;
-use LcmpPanel\Broker\BrokerException;
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Runtime;
-use LcmpPanel\Broker\SpacesClient;
-use LcmpPanel\Broker\Validator;
-use LcmpPanel\Broker\Web\WebServers;
+use LacmpPanel\Broker\ArchiveCrypto;
+use LacmpPanel\Broker\BrokerException;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\SpacesClient;
+use LacmpPanel\Broker\Validator;
+use LacmpPanel\Broker\Web\WebServers;
 
 final class BackupRun
 {
@@ -27,7 +27,7 @@ final class BackupRun
         };
 
         $blob = ArchiveCrypto::encrypt($plain['bytes'], $passphrase);
-        $key = 'lcmp/' . $plain['kind'] . '/' . $plain['name'] . '/' . $stamp . '.bin';
+        $key = 'lacmp/' . $plain['kind'] . '/' . $plain['name'] . '/' . $stamp . '.bin';
         $uploaded = $client->put($key, $blob);
         unset($plain['bytes'], $blob);
 

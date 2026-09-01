@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Web;
+namespace LacmpPanel\Broker\Web;
 
 /**
  * Generic read-only rules for stack-managed sites (no per-customer hostnames).
@@ -14,10 +14,10 @@ final class ManagedVhost
         '000-default',
         'default-ssl',
         'localhost',
-        'lcmp-panel',
+        'lacmp-panel',
     ];
 
-    /** Document roots that ship with Apache/LCMP, not panel-created sites. */
+    /** Document roots that ship with Apache/LACMP, not panel-created sites. */
     private const DEFAULT_DOCROOTS = [
         '/var/www/html',
         '/var/www',
@@ -65,7 +65,7 @@ final class ManagedVhost
         if ($rootNorm !== '' && in_array($rootNorm, self::DEFAULT_DOCROOTS, true)) {
             return true;
         }
-        if ($rootNorm !== '' && str_contains($rootNorm, '/lcmp-panel/web/public')) {
+        if ($rootNorm !== '' && str_contains($rootNorm, '/lacmp-panel/web/public')) {
             return true;
         }
 

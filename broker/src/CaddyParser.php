@@ -1,14 +1,14 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker;
+namespace LacmpPanel\Broker;
 
-use LcmpPanel\Broker\Web\ManagedVhost;
+use LacmpPanel\Broker\Web\ManagedVhost;
 
 final class CaddyParser
 {
     /**
-     * Parse a Caddy v2 site file from LCMP (or this panel).
+     * Parse a Caddy v2 site file from LACMP (or this panel).
      *
      * @return array{
      *   domains: list<string>,

@@ -1,16 +1,16 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Actions;
+namespace LacmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Runtime;
 
 final class VersionAll
 {
     public function handle(string $action, array $args, array $input, Runtime $runtime, Config $config): array
     {
-        $web = \LcmpPanel\Broker\Web\WebServers::for($config)->version($runtime, $config);
+        $web = \LacmpPanel\Broker\Web\WebServers::for($config)->version($runtime, $config);
         return [
             'web' => $web,
             'caddy' => ['version' => $web['version'], 'raw' => $web['raw']],

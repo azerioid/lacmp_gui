@@ -1,12 +1,12 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Actions;
+namespace LacmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Runtime;
-use LcmpPanel\Broker\Validator;
-use LcmpPanel\Broker\Web\WebServers;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\Validator;
+use LacmpPanel\Broker\Web\WebServers;
 
 final class TlsCerts
 {

@@ -13,7 +13,7 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 #[Layout('layouts.app')]
-#[Title('Settings · LCMP Panel')]
+#[Title('Settings · LACMP Panel')]
 class SettingsPage extends Component
 {
     public string $name = '';
@@ -35,7 +35,7 @@ class SettingsPage extends Component
         $user = Auth::user();
         $this->name = $user->name;
         $this->email = $user->email;
-        $this->idle = (int) Setting::get('session_timeout_minutes', config('lcmp.session_idle_minutes', 15));
+        $this->idle = (int) Setting::get('session_timeout_minutes', config('lacmp.session_idle_minutes', 15));
         $this->retention = (int) Setting::get('audit_retention_days', 90);
         $ips = Setting::get('ip_allowlist', []);
         $this->ipAllowlist = is_array($ips) ? implode("\n", $ips) : '';
@@ -131,7 +131,7 @@ class SettingsPage extends Component
         $user = Auth::user();
 
         return view('livewire.settings', [
-            'totpRequired' => (bool) config('lcmp.require_totp'),
+            'totpRequired' => (bool) config('lacmp.require_totp'),
             'totpEnrolled' => $user instanceof User && $user->hasTwoFactorEnabled(),
         ])->layoutData([
             'heading' => 'Settings',

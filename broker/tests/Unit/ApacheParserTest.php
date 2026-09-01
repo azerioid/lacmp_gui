@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Tests;
+namespace LacmpPanel\Broker\Tests;
 
-use LcmpPanel\Broker\Web\ApacheParser;
+use LacmpPanel\Broker\Web\ApacheParser;
 use PHPUnit\Framework\TestCase;
 
 final class ApacheParserTest extends TestCase
@@ -69,10 +69,10 @@ APACHE;
 <VirtualHost *:443>
     ServerName 157.245.84.199
     SSLEngine on
-    DocumentRoot /usr/local/lib/lcmp-panel/web/public
+    DocumentRoot /usr/local/lib/lacmp-panel/web/public
 </VirtualHost>
 APACHE;
-        $parsed = ApacheParser::parseFile('/etc/apache2/sites-available/lcmp-panel.conf', $contents, []);
+        $parsed = ApacheParser::parseFile('/etc/apache2/sites-available/lacmp-panel.conf', $contents, []);
         $this->assertTrue($parsed['readonly']);
         $this->assertSame('157.245.84.199', $parsed['domain']);
     }

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker;
+namespace LacmpPanel\Broker;
 
 final class Config
 {
@@ -14,7 +14,7 @@ final class Config
     public string $caddyConfD = self::CADDY_CONFD;
     public string $caddyfile = self::CADDYFILE;
     public string $caddyBin = '/usr/bin/caddy';
-    public string $stack = 'lcmp';
+    public string $stack = 'lacmp';
     public string $webServer = 'caddy';
     public string $webService = 'caddy';
     public string $vhostDir = '/etc/caddy/conf.d';
@@ -22,24 +22,24 @@ final class Config
     public string $vhostFormat = 'caddyfile';
     public string $apacheCtl = '/usr/sbin/apachectl';
     public string $webLogDir = '/var/log/caddy';
-    public string $auditLog = '/var/log/lcmp-panel/broker-audit.log';
+    public string $auditLog = '/var/log/lacmp-panel/broker-audit.log';
     public string $mysqlSocket = '/run/mysqld/mysqld.sock';
-    public string $mysqlUser = 'lcmp_panel_admin';
+    public string $mysqlUser = 'lacmp_panel_admin';
     public string $mysqlPassword = '';
     public string $phpUser = 'caddy';
     public string $phpGroup = 'caddy';
     public string $mariadbServerCnf = '/etc/mysql/mariadb.conf.d/50-server.cnf';
-    public string $panelRoot = '/usr/local/lib/lcmp-panel';
-    public string $artisanPath = '/usr/local/lib/lcmp-panel/web/artisan';
-    public string $stagingDir = '/var/lib/lcmp-panel/staging';
-    public string $cronDPath = '/etc/cron.d/lcmp-panel';
+    public string $panelRoot = '/usr/local/lib/lacmp-panel';
+    public string $artisanPath = '/usr/local/lib/lacmp-panel/web/artisan';
+    public string $stagingDir = '/var/lib/lacmp-panel/staging';
+    public string $cronDPath = '/etc/cron.d/lacmp-panel';
     public string $webUser = 'caddy';
 
     /** @var list<string> reverse-proxy / operator-protected vhosts (detected at install) */
     public array $readonlyVhosts = [];
 
     /** @var list<string> */
-    public array $protectedDatabases = ['information_schema', 'mysql', 'performance_schema', 'sys', 'lcmp_panel'];
+    public array $protectedDatabases = ['information_schema', 'mysql', 'performance_schema', 'sys', 'lacmp_panel'];
 
     /** @var array<string,string> log key => path */
     public array $logPaths = [
@@ -47,7 +47,7 @@ final class Config
         'mariadb' => '/var/log/mysql/error.log',
         'php-fpm' => '/var/log/www-error.log',
         'php-slow' => '/var/log/www-slow.log',
-        'panel-audit' => '/var/log/lcmp-panel/broker-audit.log',
+        'panel-audit' => '/var/log/lacmp-panel/broker-audit.log',
         'auth' => '/var/log/auth.log',
         'auth-syslog' => '/var/log/syslog',
     ];
@@ -146,7 +146,7 @@ final class Config
             '/run/php-fpm/www.sock',
         ];
         foreach ($paths as $path) {
-            if (str_contains($path, 'lcmp-panel')) {
+            if (str_contains($path, 'lacmp-panel')) {
                 continue;
             }
             $exists = $runtime !== null ? $runtime->fileExists($path) : is_file($path);

@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Actions;
+namespace LacmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\ProcMetrics;
-use LcmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\ProcMetrics;
+use LacmpPanel\Broker\Runtime;
 
 final class MetricsSystem
 {

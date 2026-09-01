@@ -4,13 +4,13 @@ namespace App\Livewire;
 
 use App\Services\Broker\BrokerCallException;
 use App\Services\Broker\BrokerClient;
-use LcmpPanel\Broker\Validator;
+use LacmpPanel\Broker\Validator;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 #[Layout('layouts.app')]
-#[Title('Virtual hosts · LCMP Panel')]
+#[Title('Virtual hosts · LACMP Panel')]
 class VhostsPage extends Component
 {
     public array $vhosts = [];
@@ -35,7 +35,7 @@ class VhostsPage extends Component
         if ($this->root === '' && $this->domain !== '') {
             try {
                 $d = Validator::domain($this->domain);
-                $this->root = rtrim((string) config('lcmp.www_root'), '/') . '/' . $d;
+                $this->root = rtrim((string) config('lacmp.www_root'), '/') . '/' . $d;
             } catch (\Throwable) {
             }
         }
@@ -46,7 +46,7 @@ class VhostsPage extends Component
         $this->error = null;
         try {
             $domain = Validator::domain($this->domain);
-            $root = Validator::webRoot($this->root, (string) config('lcmp.www_root'), new \LcmpPanel\Broker\FakeRuntime());
+            $root = Validator::webRoot($this->root, (string) config('lacmp.www_root'), new \LacmpPanel\Broker\FakeRuntime());
             $type = Validator::vhostType($this->type);
             $args = [$domain, $root, $type];
             if ($type === 'php') {

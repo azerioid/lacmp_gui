@@ -10,7 +10,7 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 #[Layout('layouts.guest')]
-#[Title('Enable 2FA · LCMP Panel')]
+#[Title('Enable 2FA · LACMP Panel')]
 class TwoFactorSetup extends Component
 {
     public string $code = '';
@@ -35,7 +35,7 @@ class TwoFactorSetup extends Component
 
     public function skip(): void
     {
-        abort_if(config('lcmp.require_totp'), 403);
+        abort_if(config('lacmp.require_totp'), 403);
         $this->redirectRoute('dashboard', navigate: true);
     }
 

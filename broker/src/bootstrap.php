@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 spl_autoload_register(static function (string $class): void {
-    $prefix = 'LcmpPanel\\Broker\\';
+    $prefix = 'LacmpPanel\\Broker\\';
     if (!str_starts_with($class, $prefix)) {
         return;
     }

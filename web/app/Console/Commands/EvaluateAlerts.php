@@ -7,7 +7,7 @@ use Illuminate\Console\Command;
 
 class EvaluateAlerts extends Command
 {
-    protected $signature = 'lcmp:evaluate-alerts';
+    protected $signature = 'lacmp:evaluate-alerts';
 
     protected $description = 'Evaluate alert rules and send Telegram on state change';
 

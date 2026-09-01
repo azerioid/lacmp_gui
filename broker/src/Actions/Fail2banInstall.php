@@ -1,12 +1,12 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Actions;
+namespace LacmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\BrokerException;
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Runtime;
-use LcmpPanel\Broker\Validator;
+use LacmpPanel\Broker\BrokerException;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\Validator;
 
 final class Fail2banInstall
 {
@@ -18,7 +18,7 @@ final class Fail2banInstall
             throw new BrokerException(trim($result->stderr) !== '' ? trim($result->stderr) : 'apt-get install fail2ban failed.', 1);
         }
         $jail = "[sshd]\nenabled = true\nbackend = systemd\nmaxretry = 5\nbantime = 1h\n";
-        $runtime->writeFile('/etc/fail2ban/jail.d/lcmp-sshd.conf', $jail, 0644);
+        $runtime->writeFile('/etc/fail2ban/jail.d/lacmp-sshd.conf', $jail, 0644);
         $runtime->exec(['/usr/bin/systemctl', 'enable', '--now', 'fail2ban'], null, 30);
         return ['installed' => true, 'jail' => 'sshd'];
     }

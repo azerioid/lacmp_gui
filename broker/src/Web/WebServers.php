@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Web;
+namespace LacmpPanel\Broker\Web;
 
-use LcmpPanel\Broker\Config;
+use LacmpPanel\Broker\Config;
 
 final class WebServers
 {

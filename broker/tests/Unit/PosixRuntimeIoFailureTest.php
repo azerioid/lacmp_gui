@@ -1,17 +1,17 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Tests;
+namespace LacmpPanel\Broker\Tests;
 
-use LcmpPanel\Broker\PosixRuntime;
+use LacmpPanel\Broker\PosixRuntime;
 use PHPUnit\Framework\TestCase;
 
 final class PosixRuntimeIoFailureTest extends TestCase
 {
     public function test_erofs_message_points_at_fpm_sandbox(): void
     {
-        $msg = PosixRuntime::describeIoFailure('write', '/etc/caddy/conf.d/abc.com.conf.lcmp-tmp', [
-            'message' => 'file_put_contents(/etc/caddy/conf.d/abc.com.conf.lcmp-tmp): Failed to open stream: Read-only file system',
+        $msg = PosixRuntime::describeIoFailure('write', '/etc/caddy/conf.d/abc.com.conf.lacmp-tmp', [
+            'message' => 'file_put_contents(/etc/caddy/conf.d/abc.com.conf.lacmp-tmp): Failed to open stream: Read-only file system',
         ]);
         $this->assertStringContainsString('read-only for the broker context', $msg);
         $this->assertStringContainsString('ProtectSystem', $msg);

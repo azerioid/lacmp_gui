@@ -5,13 +5,13 @@ namespace App\Livewire;
 use App\Services\Broker\BrokerCallException;
 use App\Services\Broker\BrokerClient;
 use App\Support\Format;
-use LcmpPanel\Broker\Validator;
+use LacmpPanel\Broker\Validator;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 #[Layout('layouts.app')]
-#[Title('Databases · LCMP Panel')]
+#[Title('Databases · LACMP Panel')]
 class DatabasesPage extends Component
 {
     public array $databases = [];

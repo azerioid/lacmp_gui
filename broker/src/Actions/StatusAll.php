@@ -1,13 +1,13 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Actions;
+namespace LacmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\ProcMetrics;
-use LcmpPanel\Broker\Runtime;
-use LcmpPanel\Broker\Systemd;
-use LcmpPanel\Broker\Validator;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\ProcMetrics;
+use LacmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\Systemd;
+use LacmpPanel\Broker\Validator;
 
 final class StatusAll
 {
@@ -92,9 +92,9 @@ final class StatusAll
     private static function proxyUpstreams(Runtime $runtime, Config $config): array
     {
         $byUpstream = [];
-        foreach (\LcmpPanel\Broker\Web\WebServers::for($config)->listVhosts($runtime, $config) as $parsed) {
+        foreach (\LacmpPanel\Broker\Web\WebServers::for($config)->listVhosts($runtime, $config) as $parsed) {
             $base = basename((string) ($parsed['source'] ?? ''), '.conf');
-            if ($base === 'lcmp-panel' || $base === 'default') {
+            if ($base === 'lacmp-panel' || $base === 'default') {
                 continue;
             }
             $proxy = $parsed['reverse_proxy'] ?? null;

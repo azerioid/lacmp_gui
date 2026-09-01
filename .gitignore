@@ -17,7 +17,7 @@ node_modules/
 /web/.env
 /web/vendor
 /web/node_modules
-/web/lib/lcmp-broker
+/web/lib/lacmp-broker
 /web/public/hot
 /web/public/storage
 /web/storage/*.key

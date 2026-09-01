@@ -1,13 +1,13 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Actions;
+namespace LacmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\BrokerException;
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Runtime;
-use LcmpPanel\Broker\Validator;
-use LcmpPanel\Broker\Web\WebServers;
+use LacmpPanel\Broker\BrokerException;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\Validator;
+use LacmpPanel\Broker\Web\WebServers;
 
 final class VhostAdd
 {
@@ -27,7 +27,7 @@ final class VhostAdd
         }
 
         $blocked = array_map('strtolower', $config->readonlyVhosts);
-        if (in_array($domain, $blocked, true) || $domain === 'default' || $domain === 'lcmp-panel') {
+        if (in_array($domain, $blocked, true) || $domain === 'default' || $domain === 'lacmp-panel') {
             throw new BrokerException("{$domain} is managed externally and can't be edited.", 3);
         }
 

@@ -10,7 +10,7 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 #[Layout('layouts.app')]
-#[Title('Overview · LCMP Panel')]
+#[Title('Overview · LACMP Panel')]
 class Dashboard extends Component
 {
     public array $status = [];
@@ -52,7 +52,7 @@ class Dashboard extends Component
             }
         }
         if (! in_array($unit, $allowed, true)) {
-            $this->error = 'Service is not in the LCMP control allowlist.';
+            $this->error = 'Service is not in the LACMP control allowlist.';
             $this->confirmService = null;
 
             return;
@@ -81,7 +81,7 @@ class Dashboard extends Component
             }
         }
         $this->error = $errors === [] ? null : implode("\n\n", $errors);
-        $this->flash = $errors === [] ? 'Restart LCMP stack completed.' : null;
+        $this->flash = $errors === [] ? 'Restart LACMP stack completed.' : null;
         $this->confirmAll = false;
         $this->refresh($broker);
     }

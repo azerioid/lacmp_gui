@@ -1,13 +1,13 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Web;
+namespace LacmpPanel\Broker\Web;
 
-use LcmpPanel\Broker\BrokerException;
-use LcmpPanel\Broker\CaddyApply;
-use LcmpPanel\Broker\CaddyParser;
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\BrokerException;
+use LacmpPanel\Broker\CaddyApply;
+use LacmpPanel\Broker\CaddyParser;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Runtime;
 
 final class CaddyDriver implements WebServerDriver
 {
@@ -15,7 +15,7 @@ final class CaddyDriver implements WebServerDriver
 
     public function stackName(): string
     {
-        return 'lcmp';
+        return 'lacmp';
     }
 
     public function webServiceName(): string
@@ -62,7 +62,7 @@ final class CaddyDriver implements WebServerDriver
 
         $this->assertCaddyfile($runtime, $config);
 
-        $tmp = $confPath . '.lcmp-tmp';
+        $tmp = $confPath . '.lacmp-tmp';
         $runtime->writeFile($tmp, $contents, 0644);
         try {
             $runtime->rename($tmp, $confPath);
@@ -190,7 +190,7 @@ final class CaddyDriver implements WebServerDriver
             'raw' => $line,
             'service' => 'caddy',
             'label' => 'Caddy',
-            'stack' => 'lcmp',
+            'stack' => 'lacmp',
         ];
     }
 

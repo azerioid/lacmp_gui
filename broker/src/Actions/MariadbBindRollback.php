@@ -1,12 +1,12 @@
 <?php
 declare(strict_types=1);
 
-namespace LcmpPanel\Broker\Actions;
+namespace LacmpPanel\Broker\Actions;
 
-use LcmpPanel\Broker\BrokerException;
-use LcmpPanel\Broker\Config;
-use LcmpPanel\Broker\Runtime;
-use LcmpPanel\Broker\Systemd;
+use LacmpPanel\Broker\BrokerException;
+use LacmpPanel\Broker\Config;
+use LacmpPanel\Broker\Runtime;
+use LacmpPanel\Broker\Systemd;
 
 final class MariadbBindRollback
 {
@@ -16,7 +16,7 @@ final class MariadbBindRollback
         $backup = (string) ($args[0] ?? $input['backup_path'] ?? '');
         $backup = trim($backup);
         $dir = dirname($path);
-        if ($runtime->resolveUnderBase($backup, $dir) === null || !str_contains(basename($backup), '.lcmp-bak-')) {
+        if ($runtime->resolveUnderBase($backup, $dir) === null || !str_contains(basename($backup), '.lacmp-bak-')) {
             throw new BrokerException('Backup path is not a panel MariaDB backup.', 3);
         }
         if (!$runtime->fileExists($backup)) {
