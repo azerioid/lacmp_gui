@@ -1,6 +1,6 @@
 # LACMP Panel
 
-A web control plane for [teddysun/lacmp](https://github.com/teddysun/lcmp)
+A web control plane for [teddysun/lcmp](https://github.com/teddysun/lcmp)
 (Linux + **Caddy** + MariaDB + PHP) and [teddysun/lamp](https://github.com/teddysun/lamp)
 (Linux + **Apache** + MariaDB + PHP). The `lacmp` / `lamp` CLI stays the source of
 truth; this panel is a scoped, authenticated UI in front of it.
@@ -17,7 +17,7 @@ share `:80`/`:443` — install **one** stack per host.
   reconfigure the stack, existing vhosts, MariaDB data, Redis, or your sites.
 
 If neither command is present, `./lacmp_gui.sh` exits and prints both clone
-options (`teddysun/lacmp` and `teddysun/lamp`).
+options (`teddysun/lcmp` and `teddysun/lamp`).
 
 ## Default install (optional extras)
 
@@ -194,7 +194,7 @@ cd web
 
 ## Troubleshooting
 
-- **Neither lacmp nor lamp:** install [teddysun/lacmp](https://github.com/teddysun/lacmp)
+- **Neither lacmp nor lamp:** install [teddysun/lcmp](https://github.com/teddysun/lcmp)
   or [teddysun/lamp](https://github.com/teddysun/lamp) first, then re-run
   `./lacmp_gui.sh`.
 - **Both commands present:** `--stack=auto` uses whoever is on `:80`/`:443`, or

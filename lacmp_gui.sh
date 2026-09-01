@@ -126,8 +126,8 @@ if [[ "${HAS_LACMP}" -eq 0 && "${HAS_LAMP}" -eq 0 ]]; then
   This panel is a web front-end for teddysun LACMP or LAMP — install one first:
 
     ${PKG_MGR} -y install wget git
-    git clone https://github.com/teddysun/lacmp.git   # Caddy stack
-    cd lacmp && chmod +x *.sh && ./lacmp.sh
+    git clone https://github.com/teddysun/lcmp.git   # Caddy stack
+    cd lcmp && chmod +x *.sh && ./lcmp.sh
 
     # or:
     git clone https://github.com/teddysun/lamp.git   # Apache stack
