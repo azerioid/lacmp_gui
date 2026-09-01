@@ -49,42 +49,44 @@ DRY_RUN=0
 
 detect_stack() {
     STACK="$(echo "${STACK}" | tr '[:upper:]' '[:lower:]')"
+    # Panel product is LACMP; teddysun's Caddy CLI is still `lcmp`.
+    [[ "${STACK}" == "lacmp" ]] && STACK=lcmp
     case "${STACK}" in
-        auto|lacmp|lamp) ;;
-        *) echo "Invalid --stack=${STACK} (use auto|lacmp|lamp)" >&2; exit 2 ;;
+        auto|lcmp|lamp) ;;
+        *) echo "Invalid --stack=${STACK} (use auto|lcmp|lamp)" >&2; exit 2 ;;
     esac
-    local has_lacmp=0 has_lamp=0
-    command -v lacmp >/dev/null 2>&1 && has_lacmp=1
+    local has_lcmp=0 has_lamp=0
+    command -v lcmp >/dev/null 2>&1 && has_lcmp=1
     command -v lamp >/dev/null 2>&1 && has_lamp=1
     if [[ "${STACK}" == "auto" ]]; then
         local listener=""
         listener="$(ss -tlnp 2>/dev/null | awk '$4 ~ /:80$/ {print; exit}' || true)"
         if echo "${listener}" | grep -qi caddy; then
-            STACK=lacmp
+            STACK=lcmp
         elif echo "${listener}" | grep -qiE 'apache|httpd'; then
             STACK=lamp
-        elif [[ "${has_lacmp}" -eq 1 && "${has_lamp}" -eq 0 ]]; then
-            STACK=lacmp
-        elif [[ "${has_lamp}" -eq 1 && "${has_lacmp}" -eq 0 ]]; then
+        elif [[ "${has_lcmp}" -eq 1 && "${has_lamp}" -eq 0 ]]; then
+            STACK=lcmp
+        elif [[ "${has_lamp}" -eq 1 && "${has_lcmp}" -eq 0 ]]; then
             STACK=lamp
-        elif [[ "${has_lacmp}" -eq 1 ]]; then
-            STACK=lacmp
+        elif [[ "${has_lcmp}" -eq 1 ]]; then
+            STACK=lcmp
         elif [[ "${has_lamp}" -eq 1 ]]; then
             STACK=lamp
         else
-            echo "Neither LACMP nor LAMP was detected. Install teddysun/lacmp or teddysun/lamp first." >&2
+            echo "Neither LCMP nor LAMP was detected. Install teddysun/lcmp or teddysun/lamp first." >&2
             exit 1
         fi
     fi
-    if [[ "${STACK}" == "lacmp" && "${has_lacmp}" -eq 0 ]]; then
-        echo "--stack=lacmp requires the 'lacmp' command (teddysun/lacmp)." >&2
+    if [[ "${STACK}" == "lcmp" && "${has_lcmp}" -eq 0 ]]; then
+        echo "--stack=lcmp requires the 'lcmp' command (teddysun/lcmp)." >&2
         exit 1
     fi
     if [[ "${STACK}" == "lamp" && "${has_lamp}" -eq 0 ]]; then
         echo "--stack=lamp requires the 'lamp' command (teddysun/lamp)." >&2
         exit 1
     fi
-    if [[ "${STACK}" == "lacmp" ]]; then
+    if [[ "${STACK}" == "lcmp" ]]; then
         WEB_SERVICE=caddy
         VHOST_DIR="${CADDY_CONFD}"
         VHOST_AVAILABLE=""
@@ -109,7 +111,7 @@ detect_stack() {
         CADDY_BIN=""
         command -v a2enmod >/dev/null 2>&1 && a2enmod proxy proxy_fcgi setenvif ssl rewrite headers >/dev/null 2>&1 || true
     fi
-    if [[ "${STACK}" == "lacmp" ]] && ! command -v caddy >/dev/null 2>&1; then
+    if [[ "${STACK}" == "lcmp" ]] && ! command -v caddy >/dev/null 2>&1; then
         echo "Stack is LACMP but caddy was not found." >&2
         exit 1
     fi
@@ -285,7 +287,7 @@ Security:
 
 Layout:
   --prefix=<dir>               default /usr/local/lib/lacmp-panel
-  --stack=auto|lacmp|lamp       default auto (detect lacmp vs lamp)
+  --stack=auto|lcmp|lamp       default auto (detect teddysun lcmp vs lamp)
   --web-user=<user>            default: web-server unit user, else caddy/www-data
   --php=<X.Y>                  default: newest installed FPM
 
@@ -463,7 +465,7 @@ if [[ -z "${WEB_USER}" ]]; then
     _unit_u="$(systemctl show "${WEB_SERVICE}" -p User --value 2>/dev/null || true)"
     if [[ -n "${_unit_u}" && "${_unit_u}" != "-" && "${_unit_u}" != "root" ]] && id -u "${_unit_u}" >/dev/null 2>&1; then
         WEB_USER="${_unit_u}"
-    elif [[ "${STACK}" == "lacmp" ]] && id -u caddy >/dev/null 2>&1; then
+    elif [[ "${STACK}" == "lcmp" ]] && id -u caddy >/dev/null 2>&1; then
         WEB_USER=caddy
     elif id -u www-data >/dev/null 2>&1; then
         WEB_USER=www-data
@@ -674,7 +676,7 @@ echo "==> Installing LACMP Panel into ${PREFIX} (php ${PHP_VER}, user ${WEB_USER
 
 MYSQL_SOCKET="$(detect_mysql_socket)"
 MARIADB_CNF="$(detect_mariadb_cnf)"
-if [[ "${STACK}" == "lacmp" ]]; then
+if [[ "${STACK}" == "lcmp" ]]; then
     CADDY_BIN="$(command -v caddy || echo /usr/bin/caddy)"
 fi
 
@@ -937,7 +939,7 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
     echo "  fpm pool:      $(pool_dir 2>/dev/null || echo unknown)/lacmp-panel.conf"
     echo "  sudoers:       /etc/sudoers.d/lacmp-panel"
     echo "  readonly:      ${READONLY_JSON}"
-    if [[ "${STACK}" == "lacmp" ]]; then
+    if [[ "${STACK}" == "lcmp" ]]; then
         echo "  caddy admin:   $(caddy_admin_spec 2>/dev/null || echo unknown)"
         echo "  caddy active:  $(systemctl is-active caddy 2>/dev/null || echo unknown)"
     else
@@ -960,7 +962,7 @@ chmod 0640 /var/log/lacmp-panel/php-fpm.log
 touch /var/log/lacmp-panel/auth-fail.log
 chown "${WEB_USER}:${WEB_USER}" /var/log/lacmp-panel/auth-fail.log
 chmod 0640 /var/log/lacmp-panel/auth-fail.log
-if [[ "${STACK}" == "lacmp" ]]; then
+if [[ "${STACK}" == "lcmp" ]]; then
     install -d -m 0755 -o "${WEB_USER}" -g "${WEB_USER}" /var/log/caddy
 fi
 install -d -m 0750 -o root -g root /var/lib/lacmp-panel
@@ -1032,7 +1034,7 @@ SQL
     "vhost_format": "${VHOST_FORMAT}",
     "paths": {
         "www_root": "${WWW_ROOT}",
-$(if [[ "${STACK}" == "lacmp" ]]; then printf '%s\n' "        \"caddy_confd\": \"${CADDY_CONFD}\"," "        \"caddyfile\": \"${CADDYFILE}\"," "        \"caddy_bin\": \"${CADDY_BIN}\","; fi)
+$(if [[ "${STACK}" == "lcmp" ]]; then printf '%s\n' "        \"caddy_confd\": \"${CADDY_CONFD}\"," "        \"caddyfile\": \"${CADDYFILE}\"," "        \"caddy_bin\": \"${CADDY_BIN}\","; fi)
         "vhost_dir": "${VHOST_DIR}",
         "vhost_available": "${VHOST_AVAILABLE}",
         "web_log_dir": "${WEB_LOG_DIR}",
@@ -1083,7 +1085,7 @@ data["web_server"] = os.environ["LACMP_WEB_SERVICE"]
 data["web_service"] = os.environ["LACMP_WEB_SERVICE"]
 data["vhost_format"] = os.environ["LACMP_VHOST_FORMAT"]
 data.setdefault("paths", {})["www_root"] = os.environ["LACMP_WWW_ROOT"]
-if os.environ.get("LACMP_STACK") == "lacmp":
+if os.environ.get("LACMP_STACK") == "lcmp":
     data["paths"]["caddy_confd"] = os.environ["LACMP_CADDY_CONFD"]
     data["paths"]["caddyfile"] = "/etc/caddy/Caddyfile"
     if os.environ.get("LACMP_CADDY_BIN"):
@@ -1371,7 +1373,7 @@ if [[ "${INSTALL_CADDY_SNIPPET}" -eq 1 ]]; then
         chown "${WEB_USER}:${WEB_USER}" "${PREFIX}/web/.env"
     fi
 
-    if [[ "${STACK}" == "lacmp" ]]; then
+    if [[ "${STACK}" == "lcmp" ]]; then
     install -d -m 0755 -o "${WEB_USER}" -g "${WEB_USER}" /var/log/caddy
     touch /var/log/caddy/access_lacmp-panel.log /var/log/caddy/lacmp-panel.log
     chown "${WEB_USER}:${WEB_USER}" /var/log/caddy/access_lacmp-panel.log /var/log/caddy/lacmp-panel.log

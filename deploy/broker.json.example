@@ -15,7 +15,7 @@
         "cron_d": "/etc/cron.d/lacmp-panel",
         "panel_root": "/usr/local/lib/lacmp-panel"
     },
-    "stack": "lacmp",
+    "stack": "lcmp",
     "web_server": "caddy",
     "web_service": "caddy",
     "vhost_format": "caddyfile",

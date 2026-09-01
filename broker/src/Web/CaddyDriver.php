@@ -15,7 +15,7 @@ final class CaddyDriver implements WebServerDriver
 
     public function stackName(): string
     {
-        return 'lacmp';
+        return 'lcmp';
     }
 
     public function webServiceName(): string
@@ -190,7 +190,7 @@ final class CaddyDriver implements WebServerDriver
             'raw' => $line,
             'service' => 'caddy',
             'label' => 'Caddy',
-            'stack' => 'lacmp',
+            'stack' => 'lcmp',
         ];
     }
 

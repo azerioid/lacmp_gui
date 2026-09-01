@@ -14,7 +14,7 @@ final class Config
     public string $caddyConfD = self::CADDY_CONFD;
     public string $caddyfile = self::CADDYFILE;
     public string $caddyBin = '/usr/bin/caddy';
-    public string $stack = 'lacmp';
+    public string $stack = 'lcmp';
     public string $webServer = 'caddy';
     public string $webService = 'caddy';
     public string $vhostDir = '/etc/caddy/conf.d';
@@ -77,6 +77,9 @@ final class Config
         );
         $cfg->caddyBin = (string) ($data['paths']['caddy_bin'] ?? $cfg->caddyBin);
         $cfg->stack = (string) ($data['stack'] ?? $cfg->stack);
+        if ($cfg->stack === 'lacmp') {
+            $cfg->stack = 'lcmp';
+        }
         $cfg->webServer = (string) ($data['web_server'] ?? $cfg->webServer);
         $cfg->webService = (string) ($data['web_service'] ?? $cfg->webService);
         $cfg->vhostFormat = (string) ($data['vhost_format'] ?? $cfg->vhostFormat);

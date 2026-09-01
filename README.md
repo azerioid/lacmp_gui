@@ -38,7 +38,7 @@ With **no flags**:
 - On a TTY you can confirm tunnel vs public; Enter keeps the defaults
 - Non-interactive (`--non-interactive` or no TTY) is tunnel on **3169**
 
-Override the port with `--port=NNNN`. Force a stack with `--stack=lacmp` or
+Override the port with `--port=NNNN`. Force a stack with `--stack=lcmp` or
 `--stack=lamp`.
 
 `lacmp_gui.sh` is a thin preflight (OS gate, stack present, php-cli + composer).
@@ -65,7 +65,7 @@ By default it also enables **TOTP**, a **fail2ban** jail, and a firewall rule
 
 # Force Apache (LAMP) or Caddy (LACMP)
 ./lacmp_gui.sh --stack=lamp
-./lacmp_gui.sh --stack=lacmp
+./lacmp_gui.sh --stack=lcmp
 
 # Custom port
 ./lacmp_gui.sh --port=4444
@@ -95,7 +95,7 @@ only (Apache cannot mix HTTP and HTTPS on the same port).
 
 | Flag | Meaning |
 | --- | --- |
-| `--stack=auto\|lacmp\|lamp` | Detect or force the stack (default: **auto**) |
+| `--stack=auto\|lcmp\|lamp` | Detect or force the stack (default: **auto**) |
 | `--access=tunnel\|public` | Access mode (default: **tunnel**; public is optional) |
 | `--domain=` / `--ip=` | Public HTTPS identity |
 | `--port=` | Panel listen port (default 3169; not 80/443) |
@@ -198,7 +198,7 @@ cd web
   or [teddysun/lamp](https://github.com/teddysun/lamp) first, then re-run
   `./lacmp_gui.sh`.
 - **Both commands present:** `--stack=auto` uses whoever is on `:80`/`:443`, or
-  pass `--stack=lacmp` / `--stack=lamp`.
+  pass `--stack=lcmp` / `--stack=lamp`.
 - **Caddy admin API connection refused (`dial tcp [::1]:2019`):** the installer
   probes `127.0.0.1` first and falls back to `systemctl reload` then
   `systemctl restart`. Re-run the installer; check `Caddy apply strategy`.

@@ -177,7 +177,7 @@ final class FakeBroker
     private function versionAll(): array
     {
         return [
-            'web' => ['version' => '2.10.0', 'raw' => 'v2.10.0', 'service' => 'caddy', 'label' => 'Caddy', 'stack' => 'lacmp'],
+            'web' => ['version' => '2.10.0', 'raw' => 'v2.10.0', 'service' => 'caddy', 'label' => 'Caddy', 'stack' => 'lcmp'],
             'caddy' => ['version' => '2.10.0', 'raw' => 'v2.10.0'],
             'mariadb' => ['version' => '11.4.5', 'raw' => 'mariadb from 11.4.5-MariaDB'],
             'php' => ['version' => '8.4.5', 'raw' => 'PHP 8.4.5 (cli)', 'installed' => ['8.4']],
