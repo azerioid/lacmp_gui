@@ -5,6 +5,7 @@ namespace LacmpPanel\Broker\Web;
 
 use LacmpPanel\Broker\BrokerException;
 use LacmpPanel\Broker\CaddyApply;
+use LacmpPanel\Broker\CaddyCli;
 use LacmpPanel\Broker\CaddyParser;
 use LacmpPanel\Broker\Config;
 use LacmpPanel\Broker\Runtime;
@@ -71,7 +72,7 @@ final class CaddyDriver implements WebServerDriver
             throw $e;
         }
 
-        $validate = $runtime->exec([$config->caddyBin, 'validate', '--config', $this->mainConfigPath($config)], null, 20);
+        $validate = CaddyCli::validate($runtime, $config, $this->mainConfigPath($config));
         if (!$validate->ok()) {
             $runtime->deleteFile($confPath);
             $detail = trim($validate->stderr . "\n" . $validate->stdout);
@@ -121,7 +122,7 @@ final class CaddyDriver implements WebServerDriver
 
         $this->assertCaddyfile($runtime, $config);
         $runtime->deleteFile($confPath);
-        $validate = $runtime->exec([$config->caddyBin, 'validate', '--config', $this->mainConfigPath($config)], null, 20);
+        $validate = CaddyCli::validate($runtime, $config, $this->mainConfigPath($config));
         if (!$validate->ok()) {
             $runtime->writeFile($confPath, $contents, 0644);
             throw new BrokerException(

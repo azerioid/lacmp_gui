@@ -79,4 +79,70 @@ final class CaddyApplyTest extends TestCase
         $this->assertNotSame(0, $code);
         $this->assertStringContainsString('nothing is listening on port 59111', $out);
     }
+
+    public function test_validate_and_reload_run_as_caddy_service_user(): void
+    {
+        $rt = new FakeRuntime();
+        $rt->dirs['/var/lib/caddy'] = true;
+        $rt->files['/usr/sbin/runuser'] = '';
+        $rt->files['/usr/bin/chown'] = '';
+        $rt->files['/etc/caddy/Caddyfile'] = "{\n    admin 127.0.0.1:2019\n}\nimport /etc/caddy/conf.d/*.conf\n";
+        $rt->script(['/usr/bin/systemctl', 'show', 'caddy', '-p', 'User', '--value'], 0, "caddy\n");
+        $rt->script(['/usr/bin/chown', '-R', 'caddy:caddy', '/var/lib/caddy'], 0);
+        $rt->script(
+            ['/usr/sbin/runuser', '-u', 'caddy', '--', '/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'],
+            0,
+            'Valid configuration'
+        );
+        $rt->script(
+            ['/usr/sbin/runuser', '-u', 'caddy', '--', '/usr/bin/caddy', 'reload', '--config', '/etc/caddy/Caddyfile', '--address', '127.0.0.1:2019', '--force'],
+            0
+        );
+        $rt->script(['/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'], 1, '', 'must not run as root');
+        $rt->script(['/usr/bin/caddy', 'reload', '--config', '/etc/caddy/Caddyfile', '--address', '127.0.0.1:2019', '--force'], 1, '', 'must not run as root');
+
+        $kernel = new Kernel(new Config(), $rt);
+        ob_start();
+        $code = $kernel->run(['broker', 'caddy.apply'], ['mode' => 'auto', 'expect_ports' => []]);
+        $out = ob_get_clean();
+
+        $this->assertSame(0, $code, $out);
+        $rootCli = array_filter($rt->execLog, static function (array $e): bool {
+            return ($e['command'][0] ?? '') === '/usr/bin/caddy';
+        });
+        $this->assertSame([], $rootCli);
+        $asUser = array_filter($rt->execLog, static function (array $e): bool {
+            return ($e['command'][0] ?? '') === '/usr/sbin/runuser'
+                && ($e['command'][1] ?? '') === '-u'
+                && ($e['command'][2] ?? '') === 'caddy';
+        });
+        $this->assertNotSame([], $asUser);
+        $chowns = array_filter($rt->execLog, static function (array $e): bool {
+            return ($e['command'][0] ?? '') === '/usr/bin/chown'
+                && ($e['command'][3] ?? '') === '/var/lib/caddy';
+        });
+        $this->assertNotSame([], $chowns);
+    }
+
+    public function test_root_caddy_unit_does_not_wrap_cli(): void
+    {
+        $rt = new FakeRuntime();
+        $rt->dirs['/var/lib/caddy'] = true;
+        $rt->files['/usr/sbin/runuser'] = '';
+        $rt->files['/etc/caddy/Caddyfile'] = "{\n    admin 127.0.0.1:2019\n}\n";
+        $rt->script(['/usr/bin/systemctl', 'show', 'caddy', '-p', 'User', '--value'], 0, "root\n");
+        $rt->script(['/usr/bin/caddy', 'validate', '--config', '/etc/caddy/Caddyfile'], 0, 'Valid configuration');
+        $rt->script(['/usr/bin/caddy', 'reload', '--config', '/etc/caddy/Caddyfile', '--address', '127.0.0.1:2019', '--force'], 0);
+
+        $kernel = new Kernel(new Config(), $rt);
+        ob_start();
+        $code = $kernel->run(['broker', 'caddy.apply'], ['mode' => 'auto', 'expect_ports' => []]);
+        ob_end_clean();
+
+        $this->assertSame(0, $code);
+        $asUser = array_filter($rt->execLog, static fn (array $e) => ($e['command'][0] ?? '') === '/usr/sbin/runuser');
+        $this->assertSame([], $asUser);
+        $chowns = array_filter($rt->execLog, static fn (array $e) => ($e['command'][0] ?? '') === '/usr/bin/chown');
+        $this->assertSame([], $chowns);
+    }
 }

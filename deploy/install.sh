@@ -774,6 +774,34 @@ ensure_caddy_running() {
     fi
 }
 
+caddy_service_user() {
+    local u=""
+    u="$(systemctl show caddy -p User --value 2>/dev/null || true)"
+    u="${u%%$'\n'*}"
+    u="${u#"${u%%[![:space:]]*}"}"
+    u="${u%"${u##*[![:space:]]}"}"
+    if [[ -z "${u}" ]]; then
+        u="$(systemctl show caddy -p User 2>/dev/null | sed -n 's/^User=//p' | head -n1)"
+        u="${u%%$'\n'*}"
+    fi
+    if [[ -z "${u}" || "${u}" == "root" ]]; then
+        return 0
+    fi
+    if [[ ! "${u}" =~ ^[a-zA-Z_][a-zA-Z0-9_-]{0,31}$ ]]; then
+        return 0
+    fi
+    printf '%s' "${u}"
+}
+
+reclaim_caddy_datadir() {
+    local u=""
+    u="$(caddy_service_user)"
+    [[ -n "${u}" ]] || return 0
+    [[ -d /var/lib/caddy ]] || return 0
+    echo "==> Caddy data dir owner: ${u} (/var/lib/caddy)"
+    chown -R "${u}:${u}" /var/lib/caddy
+}
+
 verify_caddy_healthy() {
     local i
     systemctl is-active --quiet caddy || return 1
@@ -837,6 +865,8 @@ caddy_apply() {
         return 1
     fi
 
+    reclaim_caddy_datadir
+
     export M="${CADDY_RELOAD}" P="${ports}"
     if ! broker_caddy_apply; then
         echo "Caddy apply failed via broker; rolling back the panel snippet." >&2
@@ -855,6 +885,7 @@ caddy_apply() {
         unset M P
         return 1
     fi
+    reclaim_caddy_datadir
     return 0
 }
 

@@ -33,7 +33,7 @@ final class CaddyApply
             throw new BrokerException("Caddy main-config not found: {$caddyfile}", 1);
         }
 
-        $validate = $runtime->exec([$config->caddyBin, 'validate', '--config', $caddyfile], null, 20);
+        $validate = CaddyCli::validate($runtime, $config, $caddyfile);
         if (!$validate->ok()) {
             $detail = trim($validate->stderr . "\n" . $validate->stdout);
             throw new BrokerException(
@@ -62,6 +62,7 @@ final class CaddyApply
         }
 
         self::assertHealthy($runtime, $expectPorts);
+        CaddyCli::reclaimDataDir($runtime);
 
         fwrite(STDERR, "==> Caddy apply path: {$path} (admin {$address})\n");
 
@@ -142,7 +143,7 @@ final class CaddyApply
         }
 
         $runtime->writeFile(Config::CADDYFILE, $patched, 0644);
-        $again = $runtime->exec([$config->caddyBin, 'validate', '--config', Config::CADDYFILE], null, 20);
+        $again = CaddyCli::validate($runtime, $config, Config::CADDYFILE);
         if (!$again->ok()) {
             $runtime->writeFile(Config::CADDYFILE, $text, 0644);
             throw new BrokerException(
@@ -220,8 +221,7 @@ final class CaddyApply
     private static function tryApi(Runtime $runtime, Config $config, string $address, bool $required): ?string
     {
         fwrite(STDERR, "==> Applying via Caddy admin API ({$address})\n");
-        $cmd = [$config->caddyBin, 'reload', '--config', Config::CADDYFILE, '--address', $address, '--force'];
-        $result = $runtime->exec($cmd, null, 30);
+        $result = CaddyCli::reload($runtime, $config, $address);
         if ($result->ok()) {
             return 'api';
         }
@@ -272,6 +272,7 @@ final class CaddyApply
 
     private static function tryRestart(Runtime $runtime, bool $required): ?string
     {
+        CaddyCli::reclaimDataDir($runtime);
         fwrite(STDERR, "==> Applying via systemctl restart caddy (brief connection drop)\n");
         $result = $runtime->exec(['/usr/bin/systemctl', 'restart', 'caddy'], null, 60);
         if ($result->ok()) {
